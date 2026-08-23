@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
@@ -13,7 +14,7 @@ from src.parsers import parse
 from src.prompting import PromptMode
 from src.store import DocumentStore
 
-STORE = DocumentStore()
+STORE = DocumentStore(os.getenv("RAG_DB_PATH", "data/rag.db"))
 ENGINE = RAGEngine(STORE)
 
 app = FastAPI(
@@ -68,7 +69,6 @@ def ingest_inline(request: InlineDocumentRequest) -> dict:
         path = Path(directory) / Path(request.name).name
         path.write_text(request.text, encoding="utf-8")
         parsed = parse(path)
-        # Keep the logical caller-provided source instead of a temporary filesystem path.
         parsed = type(parsed)(request.name, parsed.media_type, parsed.text, parsed.metadata)
         return asdict(STORE.ingest(parsed))
 
@@ -88,7 +88,7 @@ async def ingest_upload(
     if len(content) > 20 * 1024 * 1024:
         raise HTTPException(413, "demo upload limit is 20 MB")
     with tempfile.TemporaryDirectory() as directory:
-        path = Path(directory) / (Path(file.filename or "document.txt").name)
+        path = Path(directory) / Path(file.filename or "document.txt").name
         path.write_bytes(content)
         try:
             parsed = parse(path)
@@ -116,10 +116,7 @@ def query(request: QueryRequest) -> dict:
 
 @app.post("/requirements/conflicts")
 def conflicts(request: ConflictRequest) -> dict[str, object]:
-    rows = [
-        Requirement(item.requirement_id, item.text, item.source)
-        for item in request.requirements
-    ]
+    rows = [Requirement(item.requirement_id, item.text, item.source) for item in request.requirements]
     detected = find_conflicts(rows, minimum_overlap=request.minimum_overlap)
     return {
         "requirements": len(rows),
