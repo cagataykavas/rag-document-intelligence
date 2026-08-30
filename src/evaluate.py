@@ -9,6 +9,7 @@ from statistics import mean
 
 from src.engine import RAGEngine
 from src.prompting import PromptMode
+from src.retrieval_eval import RetrievalCase, evaluate_rankings
 from src.store import DocumentStore
 
 
@@ -22,18 +23,16 @@ class EvalCase:
 @dataclass(frozen=True)
 class EvalMetrics:
     cases: int
+    hit_rate_at_k: float
     recall_at_k: float
+    precision_at_k: float
     mean_reciprocal_rank: float
+    ndcg_at_k: float
     citation_doc_accuracy: float
+    citation_validity_rate: float
+    lexical_grounding_rate: float
     answer_phrase_accuracy: float
     average_latency_ms: float
-
-
-def reciprocal_rank(results: list[dict], relevant_doc_id: str) -> float:
-    for rank, result in enumerate(results, start=1):
-        if result["doc_id"] == relevant_doc_id:
-            return 1.0 / rank
-    return 0.0
 
 
 def evaluate(
@@ -44,9 +43,11 @@ def evaluate(
     prompt_mode: PromptMode = PromptMode.ZERO_SHOT,
 ) -> EvalMetrics:
     engine = RAGEngine(store)
-    recalls: list[float] = []
-    reciprocal_ranks: list[float] = []
+    rankings: list[list[dict]] = []
+    retrieval_cases: list[RetrievalCase] = []
     citation_matches: list[float] = []
+    citation_validity: list[float] = []
+    grounding_rates: list[float] = []
     phrase_matches: list[float] = []
     latencies: list[float] = []
 
@@ -57,22 +58,33 @@ def evaluate(
         answer = engine.answer(case.question, k=k, mode=prompt_mode, use_llm=False)
         latencies.append((time.perf_counter() - started) * 1000)
 
-        recalls.append(float(any(item["doc_id"] == case.relevant_doc_id for item in retrieval)))
-        reciprocal_ranks.append(reciprocal_rank(retrieval, case.relevant_doc_id))
+        rankings.append(retrieval)
+        retrieval_cases.append(
+            RetrievalCase(case.question, frozenset({case.relevant_doc_id}))
+        )
         cited_docs = {chunk_to_doc.get(chunk_id) for chunk_id in answer.citations}
         citation_matches.append(float(case.relevant_doc_id in cited_docs))
+        citation_validity.append(float(answer.citation_audit["citation_validity_rate"]))
+        grounding_rates.append(float(answer.citation_audit["lexical_grounding_rate"]))
         if case.expected_phrase:
             phrase_matches.append(float(case.expected_phrase.lower() in answer.answer.lower()))
         else:
             phrase_matches.append(1.0)
 
     if not cases:
-        return EvalMetrics(0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        return EvalMetrics(0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+    retrieval_metrics = evaluate_rankings(rankings, retrieval_cases, k=k)
     return EvalMetrics(
         cases=len(cases),
-        recall_at_k=mean(recalls),
-        mean_reciprocal_rank=mean(reciprocal_ranks),
+        hit_rate_at_k=retrieval_metrics.hit_rate_at_k,
+        recall_at_k=retrieval_metrics.recall_at_k,
+        precision_at_k=retrieval_metrics.precision_at_k,
+        mean_reciprocal_rank=retrieval_metrics.mean_reciprocal_rank,
+        ndcg_at_k=retrieval_metrics.ndcg_at_k,
         citation_doc_accuracy=mean(citation_matches),
+        citation_validity_rate=mean(citation_validity),
+        lexical_grounding_rate=mean(grounding_rates),
         answer_phrase_accuracy=mean(phrase_matches),
         average_latency_ms=mean(latencies),
     )
@@ -84,11 +96,17 @@ def load_cases(path: Path) -> list[EvalCase]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Evaluate retrieval/citation behavior over an indexed SQLite corpus.")
+    parser = argparse.ArgumentParser(
+        description="Evaluate retrieval, citation and grounding behavior over an indexed corpus."
+    )
     parser.add_argument("--database", default="data/rag.db")
     parser.add_argument("--cases", type=Path, required=True)
     parser.add_argument("--k", type=int, default=5)
-    parser.add_argument("--prompt-mode", choices=[item.value for item in PromptMode], default=PromptMode.ZERO_SHOT.value)
+    parser.add_argument(
+        "--prompt-mode",
+        choices=[item.value for item in PromptMode],
+        default=PromptMode.ZERO_SHOT.value,
+    )
     args = parser.parse_args()
     metrics = evaluate(
         DocumentStore(args.database),
