@@ -6,8 +6,9 @@ from dataclasses import dataclass
 
 import httpx
 
+from src.grounding import audit_grounding
+from src.hybrid import HybridSparseRetriever
 from src.prompting import EvidenceSnippet, PromptMode, build_prompt
-from src.retrieval import SparseRetriever
 from src.store import DocumentStore
 
 
@@ -15,11 +16,14 @@ from src.store import DocumentStore
 class Answer:
     answer: str
     citations: tuple[str, ...]
+    rejected_citations: tuple[str, ...]
     confidence: float
     insufficient_evidence: bool
     retrieval: tuple[dict, ...]
+    citation_audit: dict
     prompt_mode: str
     generator: str
+    retriever: str
 
 
 class OpenAICompatibleGenerator:
@@ -48,7 +52,10 @@ class OpenAICompatibleGenerator:
         )
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
-        return json.loads(content)
+        payload = json.loads(content)
+        if not isinstance(payload, dict):
+            raise ValueError("generator response must decode to a JSON object")
+        return payload
 
 
 class RAGEngine:
@@ -59,7 +66,7 @@ class RAGEngine:
         chunks = self.store.chunks()
         if not chunks:
             return []
-        return SparseRetriever().fit(chunks).search(query, k=k)
+        return HybridSparseRetriever().fit(chunks).search(query, k=k)
 
     def answer(
         self,
@@ -76,29 +83,41 @@ class RAGEngine:
             if item["score"] > 0
         ]
         if not evidence:
+            text = "The indexed documents do not provide sufficient evidence for this question."
+            audit = audit_grounding(text, (), retrieval)
             return Answer(
-                answer="The indexed documents do not provide sufficient evidence for this question.",
+                answer=text,
                 citations=(),
+                rejected_citations=(),
                 confidence=0.0,
                 insufficient_evidence=True,
                 retrieval=tuple(retrieval),
+                citation_audit=audit.to_dict(),
                 prompt_mode=mode.value,
                 generator="extractive",
+                retriever="hybrid-word-char-tfidf",
             )
 
         prompt = build_prompt(question, evidence, mode)
         if use_llm:
             payload = OpenAICompatibleGenerator().generate(prompt)
             allowed = {item.chunk_id for item in evidence}
-            citations = tuple(item for item in payload.get("citations", []) if item in allowed)
+            requested_citations = tuple(str(item) for item in payload.get("citations", []))
+            citations = tuple(item for item in requested_citations if item in allowed)
+            rejected = tuple(item for item in requested_citations if item not in allowed)
+            answer_text = str(payload.get("answer", ""))
+            audit = audit_grounding(answer_text, requested_citations, retrieval)
             return Answer(
-                answer=str(payload.get("answer", "")),
+                answer=answer_text,
                 citations=citations,
+                rejected_citations=rejected,
                 confidence=max(0.0, min(1.0, float(payload.get("confidence", 0.0)))),
                 insufficient_evidence=bool(payload.get("insufficient_evidence", False)),
                 retrieval=tuple(retrieval),
+                citation_audit=audit.to_dict(),
                 prompt_mode=mode.value,
                 generator="openai-compatible",
+                retriever="hybrid-word-char-tfidf",
             )
 
         top = evidence[0]
@@ -106,12 +125,17 @@ class RAGEngine:
         answer_text = top.text.strip()
         if len(answer_text) > 700:
             answer_text = answer_text[:697].rstrip() + "..."
+        citations = (top.chunk_id,)
+        audit = audit_grounding(answer_text, citations, retrieval)
         return Answer(
             answer=answer_text,
-            citations=(top.chunk_id,),
+            citations=citations,
+            rejected_citations=(),
             confidence=max(0.0, min(1.0, score)),
             insufficient_evidence=False,
             retrieval=tuple(retrieval),
+            citation_audit=audit.to_dict(),
             prompt_mode=mode.value,
             generator="extractive",
+            retriever="hybrid-word-char-tfidf",
         )
