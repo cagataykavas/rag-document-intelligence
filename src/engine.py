@@ -6,6 +6,8 @@ from dataclasses import dataclass
 
 import httpx
 
+from src.claims import trace_claim_support
+from src.evidence_policy import apply_evidence_policy
 from src.grounding import audit_grounding
 from src.hybrid import HybridSparseRetriever
 from src.prompting import EvidenceSnippet, PromptMode, build_prompt
@@ -21,6 +23,9 @@ class Answer:
     insufficient_evidence: bool
     retrieval: tuple[dict, ...]
     citation_audit: dict
+    claim_support: tuple[dict, ...]
+    evidence_policy: tuple[dict, ...]
+    quarantined_chunk_ids: tuple[str, ...]
     prompt_mode: str
     generator: str
     retriever: str
@@ -68,6 +73,37 @@ class RAGEngine:
             return []
         return HybridSparseRetriever().fit(chunks).search(query, k=k)
 
+    def _insufficient_answer(
+        self,
+        retrieval: list[dict],
+        mode: PromptMode,
+        policy_findings: tuple[dict, ...] = (),
+        quarantined: tuple[str, ...] = (),
+    ) -> Answer:
+        if quarantined:
+            text = (
+                "Potentially relevant retrieved evidence was quarantined by the untrusted-evidence "
+                "policy, so the system will not use it to generate a factual answer."
+            )
+        else:
+            text = "The indexed documents do not provide sufficient evidence for this question."
+        audit = audit_grounding(text, (), retrieval)
+        return Answer(
+            answer=text,
+            citations=(),
+            rejected_citations=(),
+            confidence=0.0,
+            insufficient_evidence=True,
+            retrieval=tuple(retrieval),
+            citation_audit=audit.to_dict(),
+            claim_support=(),
+            evidence_policy=policy_findings,
+            quarantined_chunk_ids=quarantined,
+            prompt_mode=mode.value,
+            generator="extractive",
+            retriever="hybrid-word-char-tfidf",
+        )
+
     def answer(
         self,
         question: str,
@@ -83,30 +119,27 @@ class RAGEngine:
             if item["score"] > 0
         ]
         if not evidence:
-            text = "The indexed documents do not provide sufficient evidence for this question."
-            audit = audit_grounding(text, (), retrieval)
-            return Answer(
-                answer=text,
-                citations=(),
-                rejected_citations=(),
-                confidence=0.0,
-                insufficient_evidence=True,
-                retrieval=tuple(retrieval),
-                citation_audit=audit.to_dict(),
-                prompt_mode=mode.value,
-                generator="extractive",
-                retriever="hybrid-word-char-tfidf",
-            )
+            return self._insufficient_answer(retrieval, mode)
 
-        prompt = build_prompt(question, evidence, mode)
+        safe_evidence, findings = apply_evidence_policy(evidence)
+        finding_rows = tuple(item.to_dict() for item in findings)
+        quarantined = tuple(item.chunk_id for item in findings if item.quarantined)
+        if not safe_evidence:
+            return self._insufficient_answer(retrieval, mode, finding_rows, quarantined)
+
+        prompt = build_prompt(question, safe_evidence, mode)
         if use_llm:
             payload = OpenAICompatibleGenerator().generate(prompt)
-            allowed = {item.chunk_id for item in evidence}
+            allowed = {item.chunk_id for item in safe_evidence}
             requested_citations = tuple(str(item) for item in payload.get("citations", []))
             citations = tuple(item for item in requested_citations if item in allowed)
             rejected = tuple(item for item in requested_citations if item not in allowed)
             answer_text = str(payload.get("answer", ""))
             audit = audit_grounding(answer_text, requested_citations, retrieval)
+            claims = tuple(
+                item.to_dict()
+                for item in trace_claim_support(answer_text, citations, retrieval)
+            )
             return Answer(
                 answer=answer_text,
                 citations=citations,
@@ -115,18 +148,25 @@ class RAGEngine:
                 insufficient_evidence=bool(payload.get("insufficient_evidence", False)),
                 retrieval=tuple(retrieval),
                 citation_audit=audit.to_dict(),
+                claim_support=claims,
+                evidence_policy=finding_rows,
+                quarantined_chunk_ids=quarantined,
                 prompt_mode=mode.value,
                 generator="openai-compatible",
                 retriever="hybrid-word-char-tfidf",
             )
 
-        top = evidence[0]
-        score = float(retrieval[0]["score"])
+        top = safe_evidence[0]
+        retrieval_by_id = {item["chunk_id"]: item for item in retrieval}
+        score = float(retrieval_by_id[top.chunk_id]["score"])
         answer_text = top.text.strip()
         if len(answer_text) > 700:
             answer_text = answer_text[:697].rstrip() + "..."
         citations = (top.chunk_id,)
         audit = audit_grounding(answer_text, citations, retrieval)
+        claims = tuple(
+            item.to_dict() for item in trace_claim_support(answer_text, citations, retrieval)
+        )
         return Answer(
             answer=answer_text,
             citations=citations,
@@ -135,6 +175,9 @@ class RAGEngine:
             insufficient_evidence=False,
             retrieval=tuple(retrieval),
             citation_audit=audit.to_dict(),
+            claim_support=claims,
+            evidence_policy=finding_rows,
+            quarantined_chunk_ids=quarantined,
             prompt_mode=mode.value,
             generator="extractive",
             retriever="hybrid-word-char-tfidf",
