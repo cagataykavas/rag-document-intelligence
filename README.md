@@ -53,7 +53,8 @@ The engineering work is split into boundaries that can be tested independently:
 - **claim support:** answer sentences are mapped back to their strongest cited chunk;
 - **untrusted evidence:** instruction-like document content is scanned and high-risk chunks are quarantined from generation;
 - **conflict analysis:** deterministic numeric, negation, and modality contradiction checks;
-- **evaluation:** retrieval, grounding, prompt behavior, and latency are measured separately.
+- **evaluation:** retrieval, grounding, prompt behavior, and latency are measured separately;
+- **release policy:** grounded answers, safe abstentions, and failed evidence contracts are separated explicitly.
 
 ## Quick start
 
@@ -146,6 +147,32 @@ Example output shape:
 ```
 
 This makes unsupported sentences visible even when the answer as a whole has at least one valid citation. The score is again deliberately not presented as semantic proof.
+
+## Grounded-answer quality gate
+
+`src/quality_gate.py` turns the existing citation and claim diagnostics into an explicit release decision:
+
+- `pass`: the answer meets citation-validity, lexical-grounding and per-claim support thresholds;
+- `abstain`: the engine safely reports insufficient evidence without pretending the answer is publishable;
+- `fail`: the answer violates the configured evidence contract.
+
+```python
+from src.quality_gate import GroundingGateConfig, evaluate_grounding_gate
+
+result = evaluate_grounding_gate(
+    answer_payload,
+    GroundingGateConfig(
+        minimum_lexical_grounding=0.6,
+        minimum_claim_support=0.5,
+    ),
+)
+if not result.publishable:
+    print(result.to_dict())
+```
+
+The default gate requires fully valid citations, at least 0.6 lexical grounding, a cited chunk with at least 0.5 lexical support for every claim, and no rejected citation IDs. Thresholds are explicit deployment policy, not universal factuality constants.
+
+A clean abstention is kept separate from a failed answer so production metrics do not punish safe refusal as if it were malformed output. This gate remains lexical and deterministic; high-stakes deployments should add semantic entailment or human review rather than relabeling overlap as proof.
 
 ## Untrusted-document / prompt-injection policy
 
@@ -291,6 +318,7 @@ src/hybrid.py          word+character hybrid sparse retrieval
 src/evidence_policy.py untrusted-document risk policy
 src/grounding.py       citation integrity + answer-level lexical support
 src/claims.py          claim-to-cited-chunk tracing
+src/quality_gate.py    deterministic pass / abstain / fail evidence policy
 src/prompting.py       zero/one/few-shot prompt construction
 src/prompt_eval.py     prompt-mode experiment harness
 src/retrieval_eval.py  Hit/Recall/Precision/MRR/nDCG metrics
@@ -307,7 +335,7 @@ GitHub Actions runs without an external LLM key and checks:
 - persistent ingestion and SHA-256 deduplication;
 - hybrid retrieval and ranking metrics;
 - fabricated citation rejection;
-- claim-to-evidence tracing;
+- claim-to-evidence tracing and grounded-answer release gating;
 - prompt-injection quarantine behavior;
 - zero/one/few-shot evaluation harness;
 - requirement-conflict analysis;
