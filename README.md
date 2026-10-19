@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/cagataykavas/rag-document-intelligence/actions/workflows/ci.yml/badge.svg)](https://github.com/cagataykavas/rag-document-intelligence/actions/workflows/ci.yml)
 
-A persistent, evidence-grounded document intelligence service with **multi-format ingestion, hybrid sparse retrieval, zero/one/few-shot prompting, citation integrity checks, claim-to-evidence tracing, untrusted-document quarantine, quantitative evaluation, REST API and Docker deployment**.
+A persistent, evidence-grounded document intelligence service with **multi-format ingestion, hybrid sparse retrieval, zero/one/few-shot prompting, fail-closed generation admission, citation integrity checks, claim-to-evidence tracing, untrusted-document quarantine, quantitative evaluation, REST API and Docker deployment**.
 
 ![RAG Document Intelligence architecture](assets/rag_architecture.svg)
 
@@ -30,7 +30,8 @@ flowchart LR
     SEC -->|safe| Z[Zero / one / few-shot prompt]
     SEC -->|high risk| Q[Quarantine trace]
     Z --> G[Extractive or OpenAI-compatible generator]
-    G --> CV[Citation whitelist + rejected IDs]
+    G --> AD[Generation-response admission]
+    AD --> CV[Citation whitelist + rejected IDs]
     CV --> GA[Grounding audit]
     GA --> CL[Claim-to-evidence trace]
 
@@ -49,6 +50,7 @@ The engineering work is split into boundaries that can be tested independently:
 - **retrieval:** transparent word + character sparse fusion with diversity reranking;
 - **prompting:** zero-shot, one-shot, and few-shot are explicit code paths;
 - **generation:** optional OpenAI-compatible adapter rather than provider lock-in;
+- **generation admission:** exact response schema, resource limits, type checks, citation allowlisting, and abstention consistency;
 - **citation integrity:** generated citation IDs are checked against retrieved evidence;
 - **claim support:** answer sentences are mapped back to their strongest cited chunk;
 - **untrusted evidence:** instruction-like document content is scanned and high-risk chunks are quarantined from generation;
@@ -114,21 +116,43 @@ The response contains:
 - citation validity and lexical grounding diagnostics;
 - claim-level evidence support rows;
 - evidence-policy findings and quarantined chunk IDs;
+- generation-admission decision, rejection reasons, and reproducibility digests;
 - prompt mode, generator, and retriever identifiers.
 
 A fluent response cannot erase the evidence path that produced it.
 
 ## Citation integrity
 
-Generated citations are validated against the retrieved chunk whitelist.
+Generated citations are validated against the safe retrieved-chunk whitelist after
+the untrusted-evidence policy has removed quarantined chunks.
 
 ```text
 citation_validity_rate = valid generated citation IDs / all generated citation IDs
 ```
 
-An invented ID is **not** silently accepted. It is removed from the accepted citation list and preserved in `rejected_citations` for audit and evaluation.
+An invented or quarantined ID is **not** silently accepted. The complete generated
+response fails closed, the ID is preserved in `rejected_citations`, and the service
+returns an insufficient-evidence response instead of a partially trusted answer.
 
 `lexical_grounding_rate` additionally measures content-token overlap between the answer and its cited evidence. This is intentionally labelled a lexical diagnostic, **not** a semantic entailment or hallucination score.
+
+## Generation-response admission
+
+Optional model output is untrusted input. `src/generation_policy.py` enforces an
+exact four-field contract (`answer`, `citations`, `confidence`, and
+`insufficient_evidence`) before generated text reaches the grounding and claim
+tracing stages. The gate rejects:
+
+- missing or unexpected fields and wrong JSON types;
+- empty or oversized answers, oversized payloads, and excessive citations;
+- malformed, duplicate, invented, or quarantined citation IDs;
+- non-finite or out-of-range confidence values;
+- abstentions that still cite evidence, and factual answers with no citations.
+
+Every decision includes SHA-256 digests of the payload, evidence whitelist, policy,
+and final decision. The audit record includes counts and stable reason codes but
+does not copy generated answer text or citation IDs into policy logs. This provides
+replay evidence without creating a second store of model-generated content.
 
 ## Claim-to-evidence tracing
 
@@ -289,6 +313,7 @@ src/store.py           persistent document/chunk storage
 src/retrieval.py       chunking + original sparse baseline
 src/hybrid.py          word+character hybrid sparse retrieval
 src/evidence_policy.py untrusted-document risk policy
+src/generation_policy.py fail-closed model-response admission + decision digests
 src/grounding.py       citation integrity + answer-level lexical support
 src/claims.py          claim-to-cited-chunk tracing
 src/prompting.py       zero/one/few-shot prompt construction
@@ -307,6 +332,7 @@ GitHub Actions runs without an external LLM key and checks:
 - persistent ingestion and SHA-256 deduplication;
 - hybrid retrieval and ranking metrics;
 - fabricated citation rejection;
+- strict model-response admission and quarantined-citation rejection;
 - claim-to-evidence tracing;
 - prompt-injection quarantine behavior;
 - zero/one/few-shot evaluation harness;

@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from typing import Any
 
 import httpx
 
 from src.claims import trace_claim_support
 from src.evidence_policy import apply_evidence_policy
+from src.generation_policy import admit_generation
 from src.grounding import audit_grounding
 from src.hybrid import HybridSparseRetriever
 from src.prompting import EvidenceSnippet, PromptMode, build_prompt
@@ -26,6 +28,7 @@ class Answer:
     claim_support: tuple[dict, ...]
     evidence_policy: tuple[dict, ...]
     quarantined_chunk_ids: tuple[str, ...]
+    generation_admission: dict
     prompt_mode: str
     generator: str
     retriever: str
@@ -39,11 +42,13 @@ class OpenAICompatibleGenerator:
     """
 
     def __init__(self) -> None:
-        self.base_url = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1").rstrip("/")
+        self.base_url = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1").rstrip(
+            "/"
+        )
         self.api_key = os.getenv("LLM_API_KEY", "local")
         self.model = os.getenv("LLM_MODEL", "local-model")
 
-    def generate(self, prompt: str) -> dict:
+    def generate(self, prompt: str) -> Any:
         response = httpx.post(
             f"{self.base_url}/chat/completions",
             headers={"Authorization": f"Bearer {self.api_key}"},
@@ -57,10 +62,7 @@ class OpenAICompatibleGenerator:
         )
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
-        payload = json.loads(content)
-        if not isinstance(payload, dict):
-            raise ValueError("generator response must decode to a JSON object")
-        return payload
+        return json.loads(content)
 
 
 class RAGEngine:
@@ -79,8 +81,15 @@ class RAGEngine:
         mode: PromptMode,
         policy_findings: tuple[dict, ...] = (),
         quarantined: tuple[str, ...] = (),
+        generation_admission: dict | None = None,
+        generator: str = "extractive",
     ) -> Answer:
-        if quarantined:
+        if generation_admission and not generation_admission.get("accepted", True):
+            text = (
+                "The generated response failed the admission policy, so the system "
+                "will not return it as a factual answer."
+            )
+        elif quarantined:
             text = (
                 "Potentially relevant retrieved evidence was quarantined by the untrusted-evidence "
                 "policy, so the system will not use it to generate a factual answer."
@@ -99,8 +108,9 @@ class RAGEngine:
             claim_support=(),
             evidence_policy=policy_findings,
             quarantined_chunk_ids=quarantined,
+            generation_admission=generation_admission or {"applied": False},
             prompt_mode=mode.value,
-            generator="extractive",
+            generator=generator,
             retriever="hybrid-word-char-tfidf",
         )
 
@@ -131,11 +141,25 @@ class RAGEngine:
         if use_llm:
             payload = OpenAICompatibleGenerator().generate(prompt)
             allowed = {item.chunk_id for item in safe_evidence}
-            requested_citations = tuple(str(item) for item in payload.get("citations", []))
-            citations = tuple(item for item in requested_citations if item in allowed)
-            rejected = tuple(item for item in requested_citations if item not in allowed)
-            answer_text = str(payload.get("answer", ""))
-            audit = audit_grounding(answer_text, requested_citations, retrieval)
+            admission = admit_generation(payload, allowed)
+            admission_audit = admission.to_audit_dict()
+            if not admission.accepted:
+                rejected = tuple(
+                    item for item in admission.citations if item not in allowed
+                )
+                result = self._insufficient_answer(
+                    retrieval,
+                    mode,
+                    finding_rows,
+                    quarantined,
+                    admission_audit,
+                    "openai-compatible",
+                )
+                return replace(result, rejected_citations=rejected)
+
+            citations = admission.citations
+            answer_text = admission.answer
+            audit = audit_grounding(answer_text, citations, retrieval)
             claims = tuple(
                 item.to_dict()
                 for item in trace_claim_support(answer_text, citations, retrieval)
@@ -143,14 +167,15 @@ class RAGEngine:
             return Answer(
                 answer=answer_text,
                 citations=citations,
-                rejected_citations=rejected,
-                confidence=max(0.0, min(1.0, float(payload.get("confidence", 0.0)))),
-                insufficient_evidence=bool(payload.get("insufficient_evidence", False)),
+                rejected_citations=(),
+                confidence=admission.confidence,
+                insufficient_evidence=admission.insufficient_evidence,
                 retrieval=tuple(retrieval),
                 citation_audit=audit.to_dict(),
                 claim_support=claims,
                 evidence_policy=finding_rows,
                 quarantined_chunk_ids=quarantined,
+                generation_admission=admission_audit,
                 prompt_mode=mode.value,
                 generator="openai-compatible",
                 retriever="hybrid-word-char-tfidf",
@@ -165,7 +190,8 @@ class RAGEngine:
         citations = (top.chunk_id,)
         audit = audit_grounding(answer_text, citations, retrieval)
         claims = tuple(
-            item.to_dict() for item in trace_claim_support(answer_text, citations, retrieval)
+            item.to_dict()
+            for item in trace_claim_support(answer_text, citations, retrieval)
         )
         return Answer(
             answer=answer_text,
@@ -178,6 +204,7 @@ class RAGEngine:
             claim_support=claims,
             evidence_policy=finding_rows,
             quarantined_chunk_ids=quarantined,
+            generation_admission={"applied": False},
             prompt_mode=mode.value,
             generator="extractive",
             retriever="hybrid-word-char-tfidf",
