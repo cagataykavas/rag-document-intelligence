@@ -154,6 +154,15 @@ and final decision. The audit record includes counts and stable reason codes but
 does not copy generated answer text or citation IDs into policy logs. This provides
 replay evidence without creating a second store of model-generated content.
 
+The OpenAI-compatible transport enforces an earlier resource boundary before JSON
+decoding. It requests an identity-encoded response, rejects unsupported content
+encoding or malformed `Content-Length`, preflights declared size, and then reads by
+default at most 128 KiB in 16 KiB raw chunks. Both declared and observed bytes are
+checked, so chunked transfer cannot bypass the limit. `LLM_MAX_RESPONSE_BYTES` may
+lower or raise the deployment limit up to a hard 1 MiB ceiling; invalid configuration
+fails closed. Transport exceptions expose stable codes rather than provider response
+text.
+
 ## Claim-to-evidence tracing
 
 `src/claims.py` splits an answer into sentence-like claims and finds the strongest cited chunk for each claim using an inspectable lexical support score.
@@ -246,10 +255,14 @@ The benchmark exists specifically so “few-shot” is an experimental setting r
 export LLM_BASE_URL=http://localhost:11434/v1
 export LLM_API_KEY=local
 export LLM_MODEL=my-local-model
+export LLM_MAX_RESPONSE_BYTES=131072
 python -m src.cli query "Summarize the access requirements" --llm --prompt-mode few_shot
 ```
 
-The adapter requests structured JSON at temperature zero and applies evidence/citation controls after generation.
+The adapter requests one structured JSON choice at temperature zero, bounds the raw
+HTTP response before decoding it, and then applies evidence/citation controls. Providers
+that force compressed responses are rejected deliberately; terminate compression at a
+trusted gateway if bandwidth optimization is required.
 
 ## Retrieval evaluation
 
@@ -333,6 +346,7 @@ GitHub Actions runs without an external LLM key and checks:
 - hybrid retrieval and ranking metrics;
 - fabricated citation rejection;
 - strict model-response admission and quarantined-citation rejection;
+- bounded streaming of OpenAI-compatible responses before JSON decoding;
 - claim-to-evidence tracing;
 - prompt-injection quarantine behavior;
 - zero/one/few-shot evaluation harness;

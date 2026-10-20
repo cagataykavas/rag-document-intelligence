@@ -16,6 +16,19 @@ from src.prompting import EvidenceSnippet, PromptMode, build_prompt
 from src.store import DocumentStore
 
 
+DEFAULT_MAX_RESPONSE_BYTES = 128 * 1024
+HARD_MAX_RESPONSE_BYTES = 1024 * 1024
+RESPONSE_CHUNK_BYTES = 16 * 1024
+
+
+class GeneratorTransportError(RuntimeError):
+    """Stable, non-sensitive failure at the model transport boundary."""
+
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(code)
+
+
 @dataclass(frozen=True)
 class Answer:
     answer: str
@@ -41,28 +54,113 @@ class OpenAICompatibleGenerator:
     `/chat/completions` JSON contract; no provider-specific SDK is required.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        max_response_bytes: int | None = None,
+        transport: httpx.BaseTransport | None = None,
+    ) -> None:
         self.base_url = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1").rstrip(
             "/"
         )
         self.api_key = os.getenv("LLM_API_KEY", "local")
         self.model = os.getenv("LLM_MODEL", "local-model")
+        configured_limit: object = (
+            max_response_bytes
+            if max_response_bytes is not None
+            else os.getenv("LLM_MAX_RESPONSE_BYTES", str(DEFAULT_MAX_RESPONSE_BYTES))
+        )
+        self.max_response_bytes = _validated_response_limit(configured_limit)
+        self._transport = transport
 
     def generate(self, prompt: str) -> Any:
-        response = httpx.post(
-            f"{self.base_url}/chat/completions",
-            headers={"Authorization": f"Bearer {self.api_key}"},
-            json={
-                "model": self.model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.0,
-                "response_format": {"type": "json_object"},
-            },
-            timeout=60,
-        )
-        response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"]
-        return json.loads(content)
+        try:
+            with httpx.Client(
+                timeout=60,
+                transport=self._transport,
+            ) as client:
+                with client.stream(
+                    "POST",
+                    f"{self.base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Accept-Encoding": "identity",
+                    },
+                    json={
+                        "model": self.model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.0,
+                        "n": 1,
+                        "response_format": {"type": "json_object"},
+                    },
+                ) as response:
+                    response.raise_for_status()
+                    body = self._read_bounded_body(response)
+        except GeneratorTransportError:
+            raise
+        except httpx.HTTPError as exc:
+            raise GeneratorTransportError("GENERATOR_HTTP_ERROR") from exc
+
+        try:
+            envelope = json.loads(body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise GeneratorTransportError("GENERATOR_RESPONSE_NOT_JSON") from exc
+        content = _message_content(envelope)
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise GeneratorTransportError("GENERATOR_CONTENT_NOT_JSON") from exc
+
+    def _read_bounded_body(self, response: httpx.Response) -> bytes:
+        content_encoding = response.headers.get("content-encoding", "identity")
+        if content_encoding.strip().lower() not in {"", "identity"}:
+            raise GeneratorTransportError("UNSUPPORTED_RESPONSE_ENCODING")
+
+        lengths = response.headers.get_list("content-length")
+        if lengths:
+            declared = lengths[0].strip() if len(lengths) == 1 else ""
+            if not declared.isascii() or not declared.isdigit():
+                raise GeneratorTransportError("INVALID_RESPONSE_LENGTH")
+            if int(declared) > self.max_response_bytes:
+                raise GeneratorTransportError("GENERATOR_RESPONSE_TOO_LARGE")
+
+        chunks: list[bytes] = []
+        received = 0
+        for chunk in response.iter_raw(chunk_size=RESPONSE_CHUNK_BYTES):
+            received += len(chunk)
+            if received > self.max_response_bytes:
+                raise GeneratorTransportError("GENERATOR_RESPONSE_TOO_LARGE")
+            chunks.append(chunk)
+        return b"".join(chunks)
+
+
+def _validated_response_limit(value: object) -> int:
+    if isinstance(value, bool):
+        raise GeneratorTransportError("INVALID_RESPONSE_BYTE_LIMIT")
+    try:
+        converted = int(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise GeneratorTransportError("INVALID_RESPONSE_BYTE_LIMIT") from exc
+    if str(converted) != str(value).strip():
+        raise GeneratorTransportError("INVALID_RESPONSE_BYTE_LIMIT")
+    if not 1 <= converted <= HARD_MAX_RESPONSE_BYTES:
+        raise GeneratorTransportError("INVALID_RESPONSE_BYTE_LIMIT")
+    return converted
+
+
+def _message_content(envelope: object) -> str:
+    if not isinstance(envelope, dict) or "choices" not in envelope:
+        raise GeneratorTransportError("INVALID_GENERATOR_ENVELOPE")
+    choices = envelope["choices"]
+    if not isinstance(choices, list) or len(choices) != 1:
+        raise GeneratorTransportError("INVALID_GENERATOR_ENVELOPE")
+    choice = choices[0]
+    if not isinstance(choice, dict) or not isinstance(choice.get("message"), dict):
+        raise GeneratorTransportError("INVALID_GENERATOR_ENVELOPE")
+    content = choice["message"].get("content")
+    if not isinstance(content, str):
+        raise GeneratorTransportError("INVALID_GENERATOR_ENVELOPE")
+    return content
 
 
 class RAGEngine:
