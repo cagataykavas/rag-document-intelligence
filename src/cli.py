@@ -32,12 +32,15 @@ def ingest_command(args) -> None:
 
 def query_command(args) -> None:
     engine = RAGEngine(DocumentStore(args.database))
-    result = engine.answer(
-        args.question,
-        k=args.k,
-        mode=PromptMode(args.prompt_mode),
-        use_llm=args.llm,
-    )
+    try:
+        result = engine.answer(
+            args.question,
+            k=args.k,
+            mode=PromptMode(args.prompt_mode),
+            use_llm=args.llm,
+        )
+    finally:
+        engine.close()
     print(json.dumps(asdict(result), ensure_ascii=False, indent=2))
 
 
@@ -73,14 +76,14 @@ def prompt_benchmark_command(args) -> None:
             )
         )
 
-    generator = OpenAICompatibleGenerator()
-    result = {
-        "cases": len(cases),
-        "retrieval_k": args.k,
-        "quarantined_chunks": quarantined_total,
-        "generator": generator.model,
-        "modes": evaluate_prompt_modes(cases, generator.generate),
-    }
+    with OpenAICompatibleGenerator() as generator:
+        result = {
+            "cases": len(cases),
+            "retrieval_k": args.k,
+            "quarantined_chunks": quarantined_total,
+            "generator": generator.model,
+            "modes": evaluate_prompt_modes(cases, generator.generate),
+        }
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 

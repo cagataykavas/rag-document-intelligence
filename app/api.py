@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
 
@@ -17,6 +18,15 @@ from src.store import DocumentStore
 STORE = DocumentStore(os.getenv("RAG_DB_PATH", "data/rag.db"))
 ENGINE = RAGEngine(STORE)
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    try:
+        yield
+    finally:
+        ENGINE.close()
+
+
 app = FastAPI(
     title="RAG Document Intelligence",
     version="1.0.0",
@@ -24,6 +34,7 @@ app = FastAPI(
         "Persistent document ingestion, evidence retrieval, zero/one/few-shot grounded "
         "answering and deterministic requirement-conflict analysis."
     ),
+    lifespan=lifespan,
 )
 
 

@@ -256,6 +256,9 @@ export LLM_BASE_URL=http://localhost:11434/v1
 export LLM_API_KEY=local
 export LLM_MODEL=my-local-model
 export LLM_MAX_RESPONSE_BYTES=131072
+export LLM_REQUEST_DEADLINE_SECONDS=60
+export LLM_CONNECT_TIMEOUT_SECONDS=5
+export LLM_READ_TIMEOUT_SECONDS=30
 python -m src.cli query "Summarize the access requirements" --llm --prompt-mode few_shot
 ```
 
@@ -263,6 +266,13 @@ The adapter requests one structured JSON choice at temperature zero, bounds the 
 HTTP response before decoding it, and then applies evidence/citation controls. Providers
 that force compressed responses are rejected deliberately; terminate compression at a
 trusted gateway if bandwidth optimization is required.
+
+The OpenAI-compatible client is reused across requests so HTTP keep-alive and connection
+pooling apply in the long-running API and prompt benchmark. Each call receives one
+monotonic end-to-end deadline plus explicit connect and read sub-budgets. Phase budgets
+must not exceed the overall deadline; invalid configuration fails closed before network
+I/O. The adapter checks the terminal deadline while streaming and again after decoding,
+so a late provider result is never released as timely output.
 
 ## Retrieval evaluation
 
