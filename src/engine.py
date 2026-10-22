@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 import httpx
 
+from src.admission_authentication import AdmissionAuthenticator
 from src.claims import trace_claim_support
 from src.evidence_policy import apply_evidence_policy
 from src.generation_policy import admit_generation
@@ -47,6 +48,7 @@ class Answer:
     evidence_policy: tuple[dict, ...]
     quarantined_chunk_ids: tuple[str, ...]
     generation_admission: dict
+    generation_admission_authentication: dict
     prompt_mode: str
     generator: str
     retriever: str
@@ -264,9 +266,11 @@ class RAGEngine:
         self,
         store: DocumentStore,
         generator: OpenAICompatibleGenerator | None = None,
+        admission_authenticator: AdmissionAuthenticator | None = None,
     ) -> None:
         self.store = store
         self.generator = generator
+        self.admission_authenticator = admission_authenticator
 
     def close(self) -> None:
         if self.generator is not None:
@@ -285,6 +289,7 @@ class RAGEngine:
         policy_findings: tuple[dict, ...] = (),
         quarantined: tuple[str, ...] = (),
         generation_admission: dict | None = None,
+        generation_admission_authentication: dict | None = None,
         generator: str = "extractive",
     ) -> Answer:
         if generation_admission and not generation_admission.get("accepted", True):
@@ -312,6 +317,9 @@ class RAGEngine:
             evidence_policy=policy_findings,
             quarantined_chunk_ids=quarantined,
             generation_admission=generation_admission or {"applied": False},
+            generation_admission_authentication=(
+                generation_admission_authentication or {"applied": False}
+            ),
             prompt_mode=mode.value,
             generator=generator,
             retriever="hybrid-word-char-tfidf",
@@ -348,6 +356,11 @@ class RAGEngine:
             allowed = {item.chunk_id for item in safe_evidence}
             admission = admit_generation(payload, allowed)
             admission_audit = admission.to_audit_dict()
+            admission_authentication = (
+                self.admission_authenticator.authenticate(admission_audit)
+                if self.admission_authenticator is not None
+                else {"applied": False}
+            )
             if not admission.accepted:
                 rejected = tuple(
                     item for item in admission.citations if item not in allowed
@@ -358,6 +371,7 @@ class RAGEngine:
                     finding_rows,
                     quarantined,
                     admission_audit,
+                    admission_authentication,
                     "openai-compatible",
                 )
                 return replace(result, rejected_citations=rejected)
@@ -381,6 +395,7 @@ class RAGEngine:
                 evidence_policy=finding_rows,
                 quarantined_chunk_ids=quarantined,
                 generation_admission=admission_audit,
+                generation_admission_authentication=admission_authentication,
                 prompt_mode=mode.value,
                 generator="openai-compatible",
                 retriever="hybrid-word-char-tfidf",
@@ -410,6 +425,7 @@ class RAGEngine:
             evidence_policy=finding_rows,
             quarantined_chunk_ids=quarantined,
             generation_admission={"applied": False},
+            generation_admission_authentication={"applied": False},
             prompt_mode=mode.value,
             generator="extractive",
             retriever="hybrid-word-char-tfidf",

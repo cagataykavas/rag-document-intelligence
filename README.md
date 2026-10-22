@@ -31,7 +31,8 @@ flowchart LR
     SEC -->|high risk| Q[Quarantine trace]
     Z --> G[Extractive or OpenAI-compatible generator]
     G --> AD[Generation-response admission]
-    AD --> CV[Citation whitelist + rejected IDs]
+    AD --> AU[HMAC-authenticated audit evidence]
+    AU --> CV[Citation whitelist + rejected IDs]
     CV --> GA[Grounding audit]
     GA --> CL[Claim-to-evidence trace]
 
@@ -51,6 +52,7 @@ The engineering work is split into boundaries that can be tested independently:
 - **prompting:** zero-shot, one-shot, and few-shot are explicit code paths;
 - **generation:** optional OpenAI-compatible adapter rather than provider lock-in;
 - **generation admission:** exact response schema, resource limits, type checks, citation allowlisting, and abstention consistency;
+- **admission authentication:** optional HMAC-SHA256 evidence with key IDs, rotation support, freshness checks, and constant-time verification;
 - **citation integrity:** generated citation IDs are checked against retrieved evidence;
 - **claim support:** answer sentences are mapped back to their strongest cited chunk;
 - **untrusted evidence:** instruction-like document content is scanned and high-risk chunks are quarantined from generation;
@@ -117,6 +119,7 @@ The response contains:
 - claim-level evidence support rows;
 - evidence-policy findings and quarantined chunk IDs;
 - generation-admission decision, rejection reasons, and reproducibility digests;
+- optional HMAC authentication for the exact admission audit;
 - prompt mode, generator, and retriever identifiers.
 
 A fluent response cannot erase the evidence path that produced it.
@@ -162,6 +165,34 @@ checked, so chunked transfer cannot bypass the limit. `LLM_MAX_RESPONSE_BYTES` m
 lower or raise the deployment limit up to a hard 1 MiB ceiling; invalid configuration
 fails closed. Transport exceptions expose stable codes rather than provider response
 text.
+
+### Authenticating admission evidence
+
+SHA-256 makes an admission decision content-addressable, but a digest alone does not
+identify the service that produced it. Deployments can authenticate every accepted
+or rejected LLM admission decision by configuring a base64-encoded secret and a
+non-secret key identifier:
+
+```bash
+export RAG_ADMISSION_HMAC_KEY_ID=prod-2026-q4
+export RAG_ADMISSION_HMAC_KEY_B64="$(openssl rand -base64 32)"
+```
+
+The key is read from the environment and is never returned, logged, or committed.
+Partial, malformed, or shorter-than-256-bit key configuration fails during service
+startup. The response exposes a content-minimizing authentication record containing
+the key ID, issue time, exact audit digest, algorithm, purpose, and HMAC. Consumers
+select the named key from a rotation keyring, recompute both the original decision
+digest and full audit digest, and verify the MAC with constant-time comparison.
+Online verification rejects evidence older than five minutes by default; archival
+verification can explicitly disable only the age policy while retaining all digest
+and signature checks.
+
+HMAC authenticates possession of a shared secret; it is not asymmetric
+non-repudiation and does not prove that the underlying model answer is correct. A
+production deployment should obtain keys from a secrets manager or KMS, keep old
+verification keys for the retention period, restrict signer access, and rotate keys
+without reusing key IDs.
 
 ## Claim-to-evidence tracing
 
@@ -337,6 +368,7 @@ src/retrieval.py       chunking + original sparse baseline
 src/hybrid.py          word+character hybrid sparse retrieval
 src/evidence_policy.py untrusted-document risk policy
 src/generation_policy.py fail-closed model-response admission + decision digests
+src/admission_authentication.py HMAC audit authentication + rotation verification
 src/grounding.py       citation integrity + answer-level lexical support
 src/claims.py          claim-to-cited-chunk tracing
 src/prompting.py       zero/one/few-shot prompt construction

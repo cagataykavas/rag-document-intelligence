@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
+from src.admission_authentication import AdmissionAuthenticator
 from src.conflicts import Requirement, find_conflicts
 from src.engine import RAGEngine
 from src.parsers import parse
@@ -16,7 +17,7 @@ from src.prompting import PromptMode
 from src.store import DocumentStore
 
 STORE = DocumentStore(os.getenv("RAG_DB_PATH", "data/rag.db"))
-ENGINE = RAGEngine(STORE)
+ENGINE = RAGEngine(STORE, admission_authenticator=AdmissionAuthenticator.from_env())
 
 
 @asynccontextmanager
