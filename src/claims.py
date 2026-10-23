@@ -8,6 +8,14 @@ from src.grounding import STOPWORDS, TOKEN_RE
 SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 
 
+def split_claims(answer: str) -> tuple[str, ...]:
+    """Return the deterministic sentence-like units used by policy and tracing."""
+
+    return tuple(
+        item.strip() for item in SENTENCE_RE.split(answer.strip()) if item.strip()
+    )
+
+
 @dataclass(frozen=True)
 class ClaimSupport:
     claim: str
@@ -31,6 +39,7 @@ def trace_claim_support(
     answer: str,
     citation_ids: tuple[str, ...] | list[str],
     retrieval: tuple[dict, ...] | list[dict],
+    claim_citations: tuple[tuple[int, tuple[str, ...]], ...] | None = None,
 ) -> list[ClaimSupport]:
     """Map answer sentences to their strongest cited chunk by lexical overlap.
 
@@ -42,11 +51,13 @@ def trace_claim_support(
         for row in retrieval
         if isinstance(row, dict) and "chunk_id" in row
     }
-    cited_rows = [retrieved[item] for item in citation_ids if item in retrieved]
-    claims = [item.strip() for item in SENTENCE_RE.split(answer.strip()) if item.strip()]
+    claims = split_claims(answer)
+    citations_by_claim = dict(claim_citations or ())
     results: list[ClaimSupport] = []
 
-    for claim in claims:
+    for claim_index, claim in enumerate(claims):
+        scoped_ids = citations_by_claim.get(claim_index, tuple(citation_ids))
+        cited_rows = [retrieved[item] for item in scoped_ids if item in retrieved]
         claim_tokens = _tokens(claim)
         best_chunk_id: str | None = None
         best_score = 0.0

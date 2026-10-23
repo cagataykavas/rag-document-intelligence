@@ -60,6 +60,7 @@ def response_body(answer: str = "Bounded response") -> bytes:
         {
             "answer": answer,
             "citations": ["doc-1:0"],
+            "claim_citations": [{"claim_index": 0, "citations": ["doc-1:0"]}],
             "confidence": 0.9,
             "insufficient_evidence": False,
         }

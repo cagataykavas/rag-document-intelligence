@@ -45,6 +45,22 @@ def test_claim_support_maps_claim_to_cited_chunk():
     assert rows[0].lexical_support > 0.8
 
 
+def test_claim_support_respects_per_claim_citation_scope():
+    retrieval = [
+        {"chunk_id": "retention:1", "text": "Records are retained for seven years."},
+        {"chunk_id": "access:1", "text": "Administrative access requires MFA."},
+    ]
+
+    rows = trace_claim_support(
+        "Records are retained for seven years. Administrative access requires MFA.",
+        ["retention:1", "access:1"],
+        retrieval,
+        ((0, ("retention:1",)), (1, ("access:1",))),
+    )
+
+    assert [row.best_chunk_id for row in rows] == ["retention:1", "access:1"]
+
+
 def test_engine_refuses_when_only_relevant_evidence_is_quarantined(tmp_path: Path):
     store = DocumentStore(tmp_path / "rag.db")
     store.ingest(

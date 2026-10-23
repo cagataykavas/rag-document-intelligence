@@ -26,10 +26,15 @@ def valid_payload(**overrides):
     payload = {
         "answer": "Audit records are retained for seven years.",
         "citations": ["doc-123:0"],
+        "claim_citations": [{"claim_index": 0, "citations": ["doc-123:0"]}],
         "confidence": 0.91,
         "insufficient_evidence": False,
     }
     payload.update(overrides)
+    if "citations" in overrides and "claim_citations" not in overrides:
+        payload["claim_citations"] = [
+            {"claim_index": 0, "citations": list(payload["citations"])}
+        ]
     return payload
 
 

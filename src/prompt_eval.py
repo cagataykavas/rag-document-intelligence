@@ -33,12 +33,20 @@ class PromptModeMetrics:
 
 
 def _schema_valid(payload: dict) -> bool:
-    required = {"answer", "citations", "confidence", "insufficient_evidence"}
+    required = {
+        "answer",
+        "citations",
+        "claim_citations",
+        "confidence",
+        "insufficient_evidence",
+    }
     if not required.issubset(payload):
         return False
     if not isinstance(payload["answer"], str):
         return False
     if not isinstance(payload["citations"], list):
+        return False
+    if not isinstance(payload["claim_citations"], list):
         return False
     if not isinstance(payload["insufficient_evidence"], bool):
         return False

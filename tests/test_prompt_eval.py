@@ -6,6 +6,7 @@ def deterministic_generator(prompt: str) -> dict:
     return {
         "answer": "The supplied evidence requires authenticated access.",
         "citations": ["security:1"],
+        "claim_citations": [{"claim_index": 0, "citations": ["security:1"]}],
         "confidence": 0.9,
         "insufficient_evidence": False,
     }
