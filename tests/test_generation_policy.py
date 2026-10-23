@@ -14,10 +14,15 @@ def valid_payload(**overrides):
     payload = {
         "answer": "Audit records are retained for seven years.",
         "citations": ["doc-123:0"],
+        "claim_citations": [{"claim_index": 0, "citations": ["doc-123:0"]}],
         "confidence": 0.91,
         "insufficient_evidence": False,
     }
     payload.update(overrides)
+    if "citations" in overrides and "claim_citations" not in overrides:
+        payload["claim_citations"] = [
+            {"claim_index": 0, "citations": list(payload["citations"])}
+        ]
     return payload
 
 
@@ -29,6 +34,9 @@ def test_valid_response_is_admitted_deterministically():
     assert first.reasons == ()
     assert first.answer == "Audit records are retained for seven years."
     assert first.citations == ("doc-123:0",)
+    assert first.claim_citations == ((0, ("doc-123:0",)),)
+    assert first.claim_count == 1
+    assert first.claim_citation_link_count == 1
     assert first.decision_sha256 == second.decision_sha256
 
 
@@ -48,6 +56,47 @@ def test_valid_response_is_admitted_deterministically():
             "duplicate_citation",
         ),
         (valid_payload(citations=["doc-999:0"]), "citation_not_allowed"),
+        (valid_payload(claim_citations={}), "claim_citations_not_array"),
+        (
+            valid_payload(
+                answer="First claim. Second claim.",
+                claim_citations=[
+                    {"claim_index": 0, "citations": ["doc-123:0"]}
+                ],
+            ),
+            "incomplete_claim_citation_coverage",
+        ),
+        (
+            valid_payload(
+                claim_citations=[
+                    {"claim_index": 0, "citations": ["doc-999:0"]}
+                ]
+            ),
+            "claim_citation_not_declared",
+        ),
+        (
+            valid_payload(
+                answer="First claim. Second claim.",
+                claim_citations=[
+                    {"claim_index": 0, "citations": ["doc-123:0"]},
+                    {"claim_index": 0, "citations": ["doc-123:0"]},
+                ],
+            ),
+            "duplicate_claim_index",
+        ),
+        (
+            valid_payload(claim_citations=[{"claim_index": 0, "citations": []}]),
+            "claim_without_citations",
+        ),
+        (
+            valid_payload(
+                citations=["doc-123:0", "doc-123:1"],
+                claim_citations=[
+                    {"claim_index": 0, "citations": ["doc-123:0"]}
+                ],
+            ),
+            "citation_not_mapped_to_claim",
+        ),
         (valid_payload(confidence=True), "confidence_not_number"),
         (valid_payload(confidence=float("nan")), "confidence_not_finite"),
         (valid_payload(confidence=1.01), "confidence_out_of_range"),
@@ -96,9 +145,48 @@ def test_audit_record_does_not_copy_generated_content_or_citation_ids():
     assert decision.answer not in rendered
     assert "doc-123:0" not in rendered
     assert audit["payload_sha256"]
+    assert audit["claim_map_sha256"]
     assert audit["allowed_evidence_sha256"]
     assert audit["policy_sha256"]
     assert audit["decision_sha256"]
+
+
+def test_claim_map_is_order_normalized_and_privacy_reduced():
+    payload = valid_payload(
+        answer="First claim. Second claim.",
+        claim_citations=[
+            {"claim_index": 1, "citations": ["doc-123:0"]},
+            {"claim_index": 0, "citations": ["doc-123:0"]},
+        ],
+    )
+
+    decision = admit_generation(payload, ALLOWED)
+    audit = decision.to_audit_dict()
+
+    assert decision.accepted is True
+    assert decision.claim_citations == (
+        (0, ("doc-123:0",)),
+        (1, ("doc-123:0",)),
+    )
+    assert decision.answer not in repr(audit)
+    assert "doc-123:0" not in repr(audit)
+
+
+def test_abstention_accepts_empty_citation_and_claim_maps():
+    decision = admit_generation(
+        valid_payload(
+            answer="The evidence is insufficient.",
+            citations=[],
+            claim_citations=[],
+            confidence=0.0,
+            insufficient_evidence=True,
+        ),
+        ALLOWED,
+    )
+
+    assert decision.accepted is True
+    assert decision.claim_count == 1
+    assert decision.claim_citation_link_count == 0
 
 
 def build_mixed_store(tmp_path: Path) -> DocumentStore:

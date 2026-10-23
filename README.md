@@ -51,7 +51,7 @@ The engineering work is split into boundaries that can be tested independently:
 - **retrieval:** transparent word + character sparse fusion with diversity reranking;
 - **prompting:** zero-shot, one-shot, and few-shot are explicit code paths;
 - **generation:** optional OpenAI-compatible adapter rather than provider lock-in;
-- **generation admission:** exact response schema, resource limits, type checks, citation allowlisting, and abstention consistency;
+- **generation admission:** exact response schema, resource limits, type checks, citation allowlisting, per-claim citation completeness, and abstention consistency;
 - **admission authentication:** optional HMAC-SHA256 evidence with key IDs, rotation support, freshness checks, and constant-time verification;
 - **citation integrity:** generated citation IDs are checked against retrieved evidence;
 - **claim support:** answer sentences are mapped back to their strongest cited chunk;
@@ -142,20 +142,30 @@ returns an insufficient-evidence response instead of a partially trusted answer.
 ## Generation-response admission
 
 Optional model output is untrusted input. `src/generation_policy.py` enforces an
-exact four-field contract (`answer`, `citations`, `confidence`, and
-`insufficient_evidence`) before generated text reaches the grounding and claim
-tracing stages. The gate rejects:
+exact five-field contract (`answer`, `citations`, `claim_citations`, `confidence`,
+and `insufficient_evidence`) before generated text reaches the grounding and claim
+tracing stages. `claim_citations` must contain one entry for every deterministic
+sentence-like claim in a factual answer. The gate rejects:
 
 - missing or unexpected fields and wrong JSON types;
 - empty or oversized answers, oversized payloads, and excessive citations;
 - malformed, duplicate, invented, or quarantined citation IDs;
+- missing, duplicate, out-of-range, or empty claim-to-citation mappings;
+- claim mappings that reference undeclared evidence, and top-level citations that
+  are not used by any claim;
 - non-finite or out-of-range confidence values;
 - abstentions that still cite evidence, and factual answers with no citations.
 
-Every decision includes SHA-256 digests of the payload, evidence whitelist, policy,
-and final decision. The audit record includes counts and stable reason codes but
-does not copy generated answer text or citation IDs into policy logs. This provides
-replay evidence without creating a second store of model-generated content.
+Every decision includes SHA-256 digests of the payload, normalized claim map,
+evidence whitelist, policy, and final decision. The audit record includes claim and
+claim-citation link counts plus stable reason codes, but does not copy generated
+answer text or citation IDs into policy logs. This provides replay evidence without
+creating a second store of model-generated content.
+
+Coverage is deliberately narrower than truth verification: the gate proves that
+every declared sentence-like claim is mapped to retrieved, policy-allowed evidence.
+It does not prove that the evidence semantically entails the claim, that the claim
+is factually correct, or that punctuation always matches a linguistic proposition.
 
 The OpenAI-compatible transport enforces an earlier resource boundary before JSON
 decoding. It requests an identity-encoded response, rejects unsupported content
@@ -229,7 +239,10 @@ second read.
 
 ## Claim-to-evidence tracing
 
-`src/claims.py` splits an answer into sentence-like claims and finds the strongest cited chunk for each claim using an inspectable lexical support score.
+`src/claims.py` splits an answer into the same deterministic sentence-like units used
+by admission and finds the strongest chunk only within that claim's declared citation
+scope. Extractive answers without a generated claim map retain the existing global
+citation behavior.
 
 Example output shape:
 
@@ -242,7 +255,10 @@ Example output shape:
 }
 ```
 
-This makes unsupported sentences visible even when the answer as a whole has at least one valid citation. The score is again deliberately not presented as semantic proof.
+This makes unsupported sentences visible even when the answer as a whole has at
+least one valid citation, while preventing an unrelated top-level citation from
+being selected for a different claim. The score is again deliberately not presented
+as semantic proof.
 
 ## Untrusted-document / prompt-injection policy
 
@@ -420,7 +436,7 @@ GitHub Actions runs without an external LLM key and checks:
 - persistent ingestion and SHA-256 deduplication;
 - hybrid retrieval and ranking metrics;
 - fabricated citation rejection;
-- strict model-response admission and quarantined-citation rejection;
+- strict model-response admission, per-claim citation completeness, and quarantined-citation rejection;
 - bounded streaming of OpenAI-compatible responses before JSON decoding;
 - HMAC evidence verification and concurrent single-use replay enforcement;
 - claim-to-evidence tracing;

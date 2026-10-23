@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 AUTH_SCHEMA_VERSION = "generation-admission-authentication/v2"
-ADMISSION_SCHEMA_VERSION = "generation-admission/v1"
+ADMISSION_SCHEMA_VERSION = "generation-admission/v2"
 ALGORITHM = "HMAC-SHA256"
 PURPOSE = "rag-generation-admission"
 MINIMUM_KEY_BYTES = 32
@@ -33,7 +33,10 @@ AUDIT_FIELDS = frozenset(
         "reasons",
         "payload_bytes",
         "citation_count",
+        "claim_count",
+        "claim_citation_link_count",
         "payload_sha256",
+        "claim_map_sha256",
         "allowed_evidence_sha256",
         "policy_sha256",
         "decision_sha256",
@@ -97,12 +100,17 @@ def _normalize_audit(audit: Mapping[str, object]) -> dict[str, object]:
         raise AdmissionAuthenticationError("AUDIT_SCHEMA_INVALID")
     if len(reasons) != len(set(reasons)):
         raise AdmissionAuthenticationError("AUDIT_SCHEMA_INVALID")
-    if not _valid_nonnegative_int(audit["payload_bytes"]) or not _valid_nonnegative_int(
-        audit["citation_count"]
-    ):
+    count_fields = (
+        "payload_bytes",
+        "citation_count",
+        "claim_count",
+        "claim_citation_link_count",
+    )
+    if any(not _valid_nonnegative_int(audit[field]) for field in count_fields):
         raise AdmissionAuthenticationError("AUDIT_SCHEMA_INVALID")
     digest_fields = (
         "payload_sha256",
+        "claim_map_sha256",
         "allowed_evidence_sha256",
         "policy_sha256",
         "decision_sha256",

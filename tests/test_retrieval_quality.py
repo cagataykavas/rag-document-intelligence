@@ -78,6 +78,12 @@ def test_engine_fails_closed_on_rejected_llm_citations(
         return {
             "answer": "Administrative endpoints require authenticated access.",
             "citations": [valid_chunk_id, "fabricated:404"],
+            "claim_citations": [
+                {
+                    "claim_index": 0,
+                    "citations": [valid_chunk_id, "fabricated:404"],
+                }
+            ],
             "confidence": 0.91,
             "insufficient_evidence": False,
         }

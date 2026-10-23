@@ -381,7 +381,12 @@ class RAGEngine:
             audit = audit_grounding(answer_text, citations, retrieval)
             claims = tuple(
                 item.to_dict()
-                for item in trace_claim_support(answer_text, citations, retrieval)
+                for item in trace_claim_support(
+                    answer_text,
+                    citations,
+                    retrieval,
+                    admission.claim_citations,
+                )
             )
             return Answer(
                 answer=answer_text,
