@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import os
 import tempfile
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
+from src.admission_authentication import AdmissionAuthenticator
 from src.conflicts import Requirement, find_conflicts
 from src.engine import RAGEngine
 from src.parsers import parse
@@ -15,7 +17,16 @@ from src.prompting import PromptMode
 from src.store import DocumentStore
 
 STORE = DocumentStore(os.getenv("RAG_DB_PATH", "data/rag.db"))
-ENGINE = RAGEngine(STORE)
+ENGINE = RAGEngine(STORE, admission_authenticator=AdmissionAuthenticator.from_env())
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    try:
+        yield
+    finally:
+        ENGINE.close()
+
 
 app = FastAPI(
     title="RAG Document Intelligence",
@@ -24,6 +35,7 @@ app = FastAPI(
         "Persistent document ingestion, evidence retrieval, zero/one/few-shot grounded "
         "answering and deterministic requirement-conflict analysis."
     ),
+    lifespan=lifespan,
 )
 
 
