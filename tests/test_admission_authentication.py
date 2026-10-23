@@ -1,4 +1,6 @@
 import base64
+import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -6,6 +8,7 @@ import pytest
 from src.admission_authentication import (
     AdmissionAuthenticationError,
     AdmissionAuthenticator,
+    AdmissionReplayStore,
     verify_admission_authentication,
 )
 from src.engine import OpenAICompatibleGenerator, RAGEngine
@@ -16,6 +19,7 @@ from src.store import DocumentStore
 KEY = b"k" * 32
 OLD_KEY = b"o" * 32
 ISSUED_AT = 1_800_000_000
+REPLAY_ID = "a" * 32
 
 
 def valid_payload(**overrides):
@@ -44,12 +48,13 @@ def test_authenticates_exact_audit_deterministically_without_generated_content()
     signer = AdmissionAuthenticator("2026-q4-primary", KEY, clock=lambda: ISSUED_AT)
     audit = valid_audit()
 
-    first = signer.authenticate(audit)
-    second = signer.authenticate(audit)
+    first = signer.authenticate(audit, replay_id=REPLAY_ID)
+    second = signer.authenticate(audit, replay_id=REPLAY_ID)
 
     assert first == second
     assert first["applied"] is True
     assert first["algorithm"] == "HMAC-SHA256"
+    assert first["replay_id"] == REPLAY_ID
     assert valid_payload()["answer"] not in repr(first)
     assert "doc-123:0" not in repr(first)
     verify_admission_authentication(
@@ -71,6 +76,28 @@ def test_tampered_audit_field_is_rejected_even_when_decision_digest_is_unchanged
         lambda: verify_admission_authentication(
             audit,
             authentication,
+            {"primary": KEY},
+            now_epoch=ISSUED_AT,
+        ),
+    )
+
+
+def test_generated_replay_identity_is_unique_and_signature_bound():
+    signer = AdmissionAuthenticator("primary", KEY, clock=lambda: ISSUED_AT)
+    audit = valid_audit()
+
+    first = signer.authenticate(audit)
+    second = signer.authenticate(audit)
+
+    assert first["replay_id"] != second["replay_id"]
+    assert len(first["replay_id"]) == 32
+    assert first["signature"] != second["signature"]
+    tampered = {**first, "replay_id": second["replay_id"]}
+    assert_error(
+        "SIGNATURE_INVALID",
+        lambda: verify_admission_authentication(
+            audit,
+            tampered,
             {"primary": KEY},
             now_epoch=ISSUED_AT,
         ),
@@ -124,6 +151,147 @@ def test_keyring_supports_rotation_without_trying_every_secret():
         authentication,
         {"old": OLD_KEY, "primary": KEY},
         now_epoch=ISSUED_AT,
+    )
+
+
+def test_replay_store_consumes_valid_evidence_once_and_survives_restart(tmp_path: Path):
+    audit = valid_audit()
+    authentication = AdmissionAuthenticator(
+        "primary", KEY, clock=lambda: ISSUED_AT
+    ).authenticate(audit, replay_id=REPLAY_ID)
+    path = tmp_path / "replays.db"
+
+    verify_admission_authentication(
+        audit,
+        authentication,
+        {"primary": KEY},
+        now_epoch=ISSUED_AT,
+        replay_store=AdmissionReplayStore(path),
+    )
+
+    assert_error(
+        "ADMISSION_REPLAYED",
+        lambda: verify_admission_authentication(
+            audit,
+            authentication,
+            {"primary": KEY},
+            now_epoch=ISSUED_AT + 1,
+            replay_store=AdmissionReplayStore(path),
+        ),
+    )
+
+
+def test_concurrent_replay_attempts_admit_exactly_one_worker(tmp_path: Path):
+    audit = valid_audit()
+    authentication = AdmissionAuthenticator("primary", KEY).authenticate(
+        audit, issued_at_epoch=ISSUED_AT, replay_id=REPLAY_ID
+    )
+    store = AdmissionReplayStore(tmp_path / "replays.db")
+
+    def verify_once(_: int) -> str:
+        try:
+            verify_admission_authentication(
+                audit,
+                authentication,
+                {"primary": KEY},
+                now_epoch=ISSUED_AT,
+                replay_store=store,
+            )
+            return "accepted"
+        except AdmissionAuthenticationError as error:
+            return error.code
+
+    with ThreadPoolExecutor(max_workers=32) as pool:
+        outcomes = list(pool.map(verify_once, range(64)))
+
+    assert outcomes.count("accepted") == 1
+    assert outcomes.count("ADMISSION_REPLAYED") == 63
+
+
+def test_invalid_signature_does_not_burn_replay_identity(tmp_path: Path):
+    audit = valid_audit()
+    signer = AdmissionAuthenticator("primary", KEY, clock=lambda: ISSUED_AT)
+    authentication = signer.authenticate(audit, replay_id=REPLAY_ID)
+    tampered = {**authentication, "signature": "0" * 64}
+    store = AdmissionReplayStore(tmp_path / "replays.db")
+
+    assert_error(
+        "SIGNATURE_INVALID",
+        lambda: verify_admission_authentication(
+            audit,
+            tampered,
+            {"primary": KEY},
+            now_epoch=ISSUED_AT,
+            replay_store=store,
+        ),
+    )
+    verify_admission_authentication(
+        audit,
+        authentication,
+        {"primary": KEY},
+        now_epoch=ISSUED_AT,
+        replay_store=store,
+    )
+
+
+def test_replay_store_keeps_only_digest_and_prunes_expired_rows(tmp_path: Path):
+    path = tmp_path / "replays.db"
+    store = AdmissionReplayStore(path)
+    first_audit = valid_audit()
+    first = AdmissionAuthenticator("primary", KEY).authenticate(
+        first_audit, issued_at_epoch=ISSUED_AT, replay_id=REPLAY_ID
+    )
+    verify_admission_authentication(
+        first_audit,
+        first,
+        {"primary": KEY},
+        now_epoch=ISSUED_AT,
+        max_age_seconds=1,
+        clock_skew_seconds=0,
+        replay_store=store,
+    )
+
+    second_audit = valid_audit()
+    second_replay_id = "b" * 32
+    second = AdmissionAuthenticator("primary", KEY).authenticate(
+        second_audit, issued_at_epoch=ISSUED_AT + 2, replay_id=second_replay_id
+    )
+    verify_admission_authentication(
+        second_audit,
+        second,
+        {"primary": KEY},
+        now_epoch=ISSUED_AT + 2,
+        max_age_seconds=1,
+        clock_skew_seconds=0,
+        replay_store=store,
+    )
+
+    with sqlite3.connect(path) as connection:
+        rows = connection.execute(
+            "SELECT replay_sha256, expires_at_epoch FROM admission_replays"
+        ).fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] not in {REPLAY_ID, second_replay_id}
+    assert len(rows[0][0]) == 64
+    assert rows[0][1] == ISSUED_AT + 3
+
+
+def test_replay_guard_requires_bounded_online_freshness(tmp_path: Path):
+    audit = valid_audit()
+    authentication = AdmissionAuthenticator("primary", KEY).authenticate(
+        audit, issued_at_epoch=ISSUED_AT, replay_id=REPLAY_ID
+    )
+
+    assert_error(
+        "REPLAY_POLICY_INVALID",
+        lambda: verify_admission_authentication(
+            audit,
+            authentication,
+            {"primary": KEY},
+            now_epoch=ISSUED_AT,
+            max_age_seconds=None,
+            replay_store=AdmissionReplayStore(tmp_path / "replays.db"),
+        ),
     )
 
 

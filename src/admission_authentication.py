@@ -5,13 +5,17 @@ import binascii
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
+import secrets
+import sqlite3
 import time
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any, Callable
 
-AUTH_SCHEMA_VERSION = "generation-admission-authentication/v1"
+AUTH_SCHEMA_VERSION = "generation-admission-authentication/v2"
 ADMISSION_SCHEMA_VERSION = "generation-admission/v1"
 ALGORITHM = "HMAC-SHA256"
 PURPOSE = "rag-generation-admission"
@@ -20,6 +24,7 @@ DEFAULT_MAX_AGE_SECONDS = 300
 DEFAULT_CLOCK_SKEW_SECONDS = 5
 KEY_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+REPLAY_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 AUDIT_FIELDS = frozenset(
     {
         "schema_version",
@@ -42,6 +47,7 @@ AUTH_FIELDS = frozenset(
         "purpose",
         "key_id",
         "issued_at_epoch",
+        "replay_id",
         "audit_sha256",
         "signature",
     }
@@ -136,6 +142,102 @@ def _validated_key_id(key_id: object) -> str:
     return key_id
 
 
+def _validated_replay_id(replay_id: object) -> str:
+    if not isinstance(replay_id, str) or REPLAY_ID_RE.fullmatch(replay_id) is None:
+        raise AdmissionAuthenticationError("REPLAY_ID_INVALID")
+    return replay_id
+
+
+class AdmissionReplayStore:
+    """Durably consume authenticated replay identities exactly once."""
+
+    def __init__(self, path: str | Path, *, busy_timeout_seconds: float = 5.0) -> None:
+        if (
+            not isinstance(busy_timeout_seconds, (int, float))
+            or isinstance(busy_timeout_seconds, bool)
+            or not math.isfinite(busy_timeout_seconds)
+            or busy_timeout_seconds <= 0
+        ):
+            raise AdmissionAuthenticationError("REPLAY_STORE_CONFIG_INVALID")
+        self._path = Path(path)
+        self._busy_timeout_ms = max(1, int(busy_timeout_seconds * 1000))
+        try:
+            with self._connect() as connection:
+                connection.execute("PRAGMA journal_mode=WAL")
+                connection.execute("PRAGMA synchronous=FULL")
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS admission_replays (
+                        replay_sha256 TEXT PRIMARY KEY,
+                        expires_at_epoch INTEGER NOT NULL
+                    ) WITHOUT ROWID
+                    """
+                )
+        except sqlite3.Error as exc:
+            raise AdmissionAuthenticationError("REPLAY_STORE_UNAVAILABLE") from exc
+
+    def __repr__(self) -> str:
+        return "AdmissionReplayStore(path=<redacted>)"
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(
+            self._path,
+            timeout=self._busy_timeout_ms / 1000,
+            isolation_level=None,
+        )
+        connection.execute(f"PRAGMA busy_timeout={self._busy_timeout_ms}")
+        return connection
+
+    def consume(
+        self,
+        *,
+        key_id: str,
+        replay_id: str,
+        current_epoch: int,
+        expires_at_epoch: int,
+    ) -> None:
+        """Atomically reject a replay while pruning identities past their window."""
+
+        replay_key = _sha256(
+            _canonical_json(
+                {
+                    "key_id": _validated_key_id(key_id),
+                    "purpose": PURPOSE,
+                    "replay_id": _validated_replay_id(replay_id),
+                }
+            )
+        )
+        if (
+            not _valid_nonnegative_int(current_epoch)
+            or not _valid_nonnegative_int(expires_at_epoch)
+            or expires_at_epoch < current_epoch
+        ):
+            raise AdmissionAuthenticationError("REPLAY_POLICY_INVALID")
+        try:
+            with self._connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                connection.execute(
+                    "DELETE FROM admission_replays WHERE expires_at_epoch < ?",
+                    (current_epoch,),
+                )
+                try:
+                    connection.execute(
+                        """
+                        INSERT INTO admission_replays(replay_sha256, expires_at_epoch)
+                        VALUES (?, ?)
+                        """,
+                        (replay_key, expires_at_epoch),
+                    )
+                except sqlite3.IntegrityError as exc:
+                    connection.rollback()
+                    raise AdmissionAuthenticationError("ADMISSION_REPLAYED") from exc
+                connection.commit()
+        except AdmissionAuthenticationError:
+            raise
+        except sqlite3.Error as exc:
+            raise AdmissionAuthenticationError("REPLAY_STORE_UNAVAILABLE") from exc
+
+
 class AdmissionAuthenticator:
     """Authenticate admission evidence without retaining generated content."""
 
@@ -178,11 +280,15 @@ class AdmissionAuthenticator:
         audit: Mapping[str, object],
         *,
         issued_at_epoch: int | None = None,
+        replay_id: str | None = None,
     ) -> dict[str, object]:
         normalized_audit = _normalize_audit(audit)
         issued_at = int(self._clock()) if issued_at_epoch is None else issued_at_epoch
         if not _valid_nonnegative_int(issued_at):
             raise AdmissionAuthenticationError("ISSUED_AT_INVALID")
+        checked_replay_id = _validated_replay_id(
+            secrets.token_hex(16) if replay_id is None else replay_id
+        )
         claims: dict[str, object] = {
             "schema_version": AUTH_SCHEMA_VERSION,
             "applied": True,
@@ -190,6 +296,7 @@ class AdmissionAuthenticator:
             "purpose": PURPOSE,
             "key_id": self.key_id,
             "issued_at_epoch": issued_at,
+            "replay_id": checked_replay_id,
             "audit_sha256": _sha256(_canonical_json(normalized_audit)),
         }
         signature = hmac.new(
@@ -206,6 +313,7 @@ def verify_admission_authentication(
     now_epoch: int | None = None,
     max_age_seconds: int | None = DEFAULT_MAX_AGE_SECONDS,
     clock_skew_seconds: int = DEFAULT_CLOCK_SKEW_SECONDS,
+    replay_store: AdmissionReplayStore | None = None,
 ) -> None:
     """Fail closed unless the exact admission audit has a valid fresh HMAC."""
 
@@ -221,10 +329,12 @@ def verify_admission_authentication(
         raise AdmissionAuthenticationError("AUTHENTICATION_SCHEMA_INVALID")
     key_id = _validated_key_id(authentication["key_id"])
     issued_at = authentication["issued_at_epoch"]
+    replay_id = authentication["replay_id"]
     audit_sha256 = authentication["audit_sha256"]
     signature = authentication["signature"]
     if not _valid_nonnegative_int(issued_at):
         raise AdmissionAuthenticationError("ISSUED_AT_INVALID")
+    replay_id = _validated_replay_id(replay_id)
     if not isinstance(audit_sha256, str) or SHA256_RE.fullmatch(audit_sha256) is None:
         raise AdmissionAuthenticationError("AUTHENTICATION_SCHEMA_INVALID")
     if not isinstance(signature, str) or SHA256_RE.fullmatch(signature) is None:
@@ -258,3 +368,15 @@ def verify_admission_authentication(
         and current - issued_at > max_age_seconds + clock_skew_seconds
     ):
         raise AdmissionAuthenticationError("SIGNATURE_STALE")
+    if replay_store is not None:
+        if (
+            not isinstance(replay_store, AdmissionReplayStore)
+            or max_age_seconds is None
+        ):
+            raise AdmissionAuthenticationError("REPLAY_POLICY_INVALID")
+        replay_store.consume(
+            key_id=key_id,
+            replay_id=replay_id,
+            current_epoch=current,
+            expires_at_epoch=issued_at + max_age_seconds + clock_skew_seconds,
+        )

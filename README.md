@@ -181,18 +181,51 @@ export RAG_ADMISSION_HMAC_KEY_B64="$(openssl rand -base64 32)"
 The key is read from the environment and is never returned, logged, or committed.
 Partial, malformed, or shorter-than-256-bit key configuration fails during service
 startup. The response exposes a content-minimizing authentication record containing
-the key ID, issue time, exact audit digest, algorithm, purpose, and HMAC. Consumers
-select the named key from a rotation keyring, recompute both the original decision
-digest and full audit digest, and verify the MAC with constant-time comparison.
+the key ID, issue time, a random 128-bit replay ID, exact audit digest, algorithm,
+purpose, and HMAC. The replay ID is covered by the signature; a new ID is generated
+for each authentication envelope while the underlying audit remains deterministic.
+Consumers select the named key from a rotation keyring, recompute both the original
+decision digest and full audit digest, and verify the MAC with constant-time comparison.
 Online verification rejects evidence older than five minutes by default; archival
 verification can explicitly disable only the age policy while retaining all digest
 and signature checks.
+
+Online consumers can additionally make each envelope single-use with the durable
+SQLite replay ledger:
+
+```python
+from src.admission_authentication import (
+    AdmissionReplayStore,
+    verify_admission_authentication,
+)
+
+replays = AdmissionReplayStore("data/admission-replays.db")
+verify_admission_authentication(
+    audit,
+    authentication,
+    verification_keyring,
+    replay_store=replays,
+)
+```
+
+Verification checks the schema, audit digest, HMAC, and freshness before atomically
+consuming the replay ID. Concurrent workers therefore race on one unique SQLite row:
+exactly one succeeds and the others receive `ADMISSION_REPLAYED`. Invalid signatures
+cannot burn a valid identity. The ledger stores only a SHA-256 digest of the key ID,
+purpose, and replay ID, automatically removes rows after their acceptance window,
+uses WAL plus a bounded lock wait, and fails closed when storage is unavailable.
+Replay consumption requires bounded online freshness and is intentionally disabled
+for archival verification.
 
 HMAC authenticates possession of a shared secret; it is not asymmetric
 non-repudiation and does not prove that the underlying model answer is correct. A
 production deployment should obtain keys from a secrets manager or KMS, keep old
 verification keys for the retention period, restrict signer access, and rotate keys
-without reusing key IDs.
+without reusing key IDs. The SQLite ledger protects workers sharing one durable
+database path; a multi-host deployment should replace it with an atomic uniqueness
+constraint in a shared database. Consume evidence at the side-effect boundary—using
+the replay ledger for passive, repeated audit reads would intentionally reject the
+second read.
 
 ## Claim-to-evidence tracing
 
@@ -368,7 +401,7 @@ src/retrieval.py       chunking + original sparse baseline
 src/hybrid.py          word+character hybrid sparse retrieval
 src/evidence_policy.py untrusted-document risk policy
 src/generation_policy.py fail-closed model-response admission + decision digests
-src/admission_authentication.py HMAC audit authentication + rotation verification
+src/admission_authentication.py HMAC authentication + durable replay consumption
 src/grounding.py       citation integrity + answer-level lexical support
 src/claims.py          claim-to-cited-chunk tracing
 src/prompting.py       zero/one/few-shot prompt construction
@@ -389,6 +422,7 @@ GitHub Actions runs without an external LLM key and checks:
 - fabricated citation rejection;
 - strict model-response admission and quarantined-citation rejection;
 - bounded streaming of OpenAI-compatible responses before JSON decoding;
+- HMAC evidence verification and concurrent single-use replay enforcement;
 - claim-to-evidence tracing;
 - prompt-injection quarantine behavior;
 - zero/one/few-shot evaluation harness;
