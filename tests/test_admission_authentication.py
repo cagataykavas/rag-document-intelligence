@@ -124,6 +124,8 @@ def test_tampered_decision_digest_is_rejected_before_signing():
     [
         ("evidence_snapshot_sha256", "f" * 64),
         ("evidence_snapshot_bound", True),
+        ("claim_support_sha256", "f" * 64),
+        ("claim_support_bound", True),
     ],
 )
 def test_tampered_evidence_binding_is_rejected_before_signing(field: str, value):
@@ -422,6 +424,10 @@ def test_engine_authenticates_both_accepted_and_rejected_llm_decisions(
 
     assert answer.generation_admission["accepted"] is accepted
     assert answer.generation_admission["evidence_snapshot_bound"] is True
+    assert answer.generation_admission["claim_support_bound"] is accepted
+    if accepted:
+        assert answer.claim_support[0]["source_span_sha256"]
+        assert answer.claim_support[0]["source_span_commitment_sha256"]
     assert answer.generation_admission_authentication["applied"] is True
     verify_admission_authentication(
         answer.generation_admission,

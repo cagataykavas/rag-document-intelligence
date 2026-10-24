@@ -10,10 +10,10 @@ from typing import Any, Callable
 import httpx
 
 from src.admission_authentication import AdmissionAuthenticator
-from src.claims import trace_claim_support
+from src.claims import claim_support_sha256, trace_claim_support
 from src.evidence_policy import apply_evidence_policy
 from src.evidence_snapshot import build_evidence_snapshot
-from src.generation_policy import GenerationPolicy, admit_generation
+from src.generation_policy import GenerationPolicy, admit_generation, bind_claim_support
 from src.grounding import audit_grounding
 from src.hybrid import HybridSparseRetriever
 from src.prompting import EvidenceSnippet, PromptMode, build_prompt
@@ -364,6 +364,20 @@ class RAGEngine:
                 CONTENT_BOUND_GENERATION_POLICY,
                 evidence_snapshot_sha256=evidence_snapshot.snapshot_sha256,
             )
+            claim_rows = ()
+            if admission.accepted:
+                claim_rows = tuple(
+                    trace_claim_support(
+                        admission.answer,
+                        admission.citations,
+                        retrieval,
+                        admission.claim_citations,
+                    )
+                )
+                admission = bind_claim_support(
+                    admission,
+                    claim_support_sha256(claim_rows),
+                )
             admission_audit = admission.to_audit_dict()
             admission_authentication = (
                 self.admission_authenticator.authenticate(admission_audit)
@@ -388,15 +402,7 @@ class RAGEngine:
             citations = admission.citations
             answer_text = admission.answer
             audit = audit_grounding(answer_text, citations, retrieval)
-            claims = tuple(
-                item.to_dict()
-                for item in trace_claim_support(
-                    answer_text,
-                    citations,
-                    retrieval,
-                    admission.claim_citations,
-                )
-            )
+            claims = tuple(item.to_dict() for item in claim_rows)
             return Answer(
                 answer=answer_text,
                 citations=citations,

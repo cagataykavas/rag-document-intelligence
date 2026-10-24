@@ -4,12 +4,12 @@ import hashlib
 import json
 import math
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 
-from src.claims import split_claims
+from src.claims import EMPTY_CLAIM_SUPPORT_SHA256, split_claims
 
-SCHEMA_VERSION = "generation-admission/v3"
+SCHEMA_VERSION = "generation-admission/v4"
 EXPECTED_FIELDS = frozenset(
     {
         "answer",
@@ -58,6 +58,8 @@ class GenerationAdmission:
     allowed_evidence_sha256: str
     evidence_snapshot_sha256: str
     evidence_snapshot_bound: bool
+    claim_support_sha256: str
+    claim_support_bound: bool
     policy_sha256: str
     decision_sha256: str
 
@@ -78,6 +80,8 @@ class GenerationAdmission:
             "allowed_evidence_sha256": self.allowed_evidence_sha256,
             "evidence_snapshot_sha256": self.evidence_snapshot_sha256,
             "evidence_snapshot_bound": self.evidence_snapshot_bound,
+            "claim_support_sha256": self.claim_support_sha256,
+            "claim_support_bound": self.claim_support_bound,
             "policy_sha256": self.policy_sha256,
             "decision_sha256": self.decision_sha256,
         }
@@ -96,6 +100,67 @@ def _canonical_json(value: Any) -> bytes:
 
 def _sha256(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def _decision_sha256(
+    *,
+    accepted: bool,
+    reasons: tuple[str, ...] | list[str],
+    payload_sha256: str,
+    allowed_evidence_sha256: str,
+    evidence_snapshot_sha256: str,
+    evidence_snapshot_bound: bool,
+    claim_support_sha256: str,
+    claim_support_bound: bool,
+    policy_sha256: str,
+) -> str:
+    return _sha256(
+        _canonical_json(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "accepted": accepted,
+                "reasons": list(reasons),
+                "payload_sha256": payload_sha256,
+                "allowed_evidence_sha256": allowed_evidence_sha256,
+                "evidence_snapshot_sha256": evidence_snapshot_sha256,
+                "evidence_snapshot_bound": evidence_snapshot_bound,
+                "claim_support_sha256": claim_support_sha256,
+                "claim_support_bound": claim_support_bound,
+                "policy_sha256": policy_sha256,
+            }
+        )
+    )
+
+
+def bind_claim_support(
+    admission: GenerationAdmission,
+    support_sha256: str,
+) -> GenerationAdmission:
+    """Bind a validated decision to its privacy-reduced claim/span trace."""
+
+    if not isinstance(admission, GenerationAdmission) or not admission.accepted:
+        raise ValueError("claim support can only bind an accepted admission")
+    if (
+        not isinstance(support_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", support_sha256) is None
+    ):
+        raise ValueError("claim support digest must be lowercase SHA-256")
+    return replace(
+        admission,
+        claim_support_sha256=support_sha256,
+        claim_support_bound=True,
+        decision_sha256=_decision_sha256(
+            accepted=admission.accepted,
+            reasons=admission.reasons,
+            payload_sha256=admission.payload_sha256,
+            allowed_evidence_sha256=admission.allowed_evidence_sha256,
+            evidence_snapshot_sha256=admission.evidence_snapshot_sha256,
+            evidence_snapshot_bound=admission.evidence_snapshot_bound,
+            claim_support_sha256=support_sha256,
+            claim_support_bound=True,
+            policy_sha256=admission.policy_sha256,
+        ),
+    )
 
 
 def _add_reason(reasons: list[str], reason: str) -> None:
@@ -275,18 +340,8 @@ def admit_generation(
     claim_map_sha256 = _sha256(_canonical_json(claim_citations))
     allowed_evidence_sha256 = _sha256(allowed_bytes)
     policy_sha256 = _sha256(policy_bytes)
-    decision_bytes = _canonical_json(
-        {
-            "schema_version": SCHEMA_VERSION,
-            "accepted": accepted,
-            "reasons": reasons,
-            "payload_sha256": payload_sha256,
-            "allowed_evidence_sha256": allowed_evidence_sha256,
-            "evidence_snapshot_sha256": evidence_snapshot_sha256,
-            "evidence_snapshot_bound": evidence_snapshot_bound,
-            "policy_sha256": policy_sha256,
-        }
-    )
+    claim_support_digest = EMPTY_CLAIM_SUPPORT_SHA256
+    claim_support_bound = False
 
     return GenerationAdmission(
         accepted=accepted,
@@ -305,6 +360,18 @@ def admit_generation(
         allowed_evidence_sha256=allowed_evidence_sha256,
         evidence_snapshot_sha256=evidence_snapshot_sha256,
         evidence_snapshot_bound=evidence_snapshot_bound,
+        claim_support_sha256=claim_support_digest,
+        claim_support_bound=claim_support_bound,
         policy_sha256=policy_sha256,
-        decision_sha256=_sha256(decision_bytes),
+        decision_sha256=_decision_sha256(
+            accepted=accepted,
+            reasons=reasons,
+            payload_sha256=payload_sha256,
+            allowed_evidence_sha256=allowed_evidence_sha256,
+            evidence_snapshot_sha256=evidence_snapshot_sha256,
+            evidence_snapshot_bound=evidence_snapshot_bound,
+            claim_support_sha256=claim_support_digest,
+            claim_support_bound=claim_support_bound,
+            policy_sha256=policy_sha256,
+        ),
     )

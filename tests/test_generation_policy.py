@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from src.engine import OpenAICompatibleGenerator, RAGEngine
-from src.generation_policy import GenerationPolicy, admit_generation
+from src.generation_policy import GenerationPolicy, admit_generation, bind_claim_support
 from src.parsers import ParsedDocument
 from src.store import DocumentStore
 
@@ -37,6 +37,7 @@ def test_valid_response_is_admitted_deterministically():
     assert first.claim_citations == ((0, ("doc-123:0",)),)
     assert first.claim_count == 1
     assert first.claim_citation_link_count == 1
+    assert first.claim_support_bound is False
     assert first.decision_sha256 == second.decision_sha256
 
 
@@ -143,8 +144,22 @@ def test_audit_record_does_not_copy_generated_content_or_citation_ids():
     assert audit["allowed_evidence_sha256"]
     assert audit["evidence_snapshot_sha256"]
     assert audit["evidence_snapshot_bound"] is False
+    assert audit["claim_support_sha256"]
+    assert audit["claim_support_bound"] is False
     assert audit["policy_sha256"]
     assert audit["decision_sha256"]
+
+
+def test_claim_support_binding_changes_and_authenticates_decision_digest():
+    decision = admit_generation(valid_payload(), ALLOWED)
+    bound = bind_claim_support(decision, "c" * 64)
+
+    assert bound.claim_support_bound is True
+    assert bound.claim_support_sha256 == "c" * 64
+    assert bound.decision_sha256 != decision.decision_sha256
+
+    with pytest.raises(ValueError, match="lowercase SHA-256"):
+        bind_claim_support(decision, "not-a-digest")
 
 
 def test_content_bound_policy_requires_valid_snapshot_digest():

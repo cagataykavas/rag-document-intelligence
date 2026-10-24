@@ -160,7 +160,8 @@ sentence-like claim in a factual answer. The gate rejects:
 - abstentions that still cite evidence, and factual answers with no citations.
 
 Every LLM decision includes SHA-256 digests of the payload, normalized claim map,
-evidence whitelist, content-bound evidence snapshot, policy, and final decision.
+evidence whitelist, content-bound evidence snapshot, exact claim-support spans,
+policy, and final decision.
 The snapshot commits to each safe chunk's ID, exact UTF-8 text, source identity,
 and byte length after quarantine and before prompt construction. This prevents a
 reused chunk ID with substituted content from producing the same admission evidence.
@@ -168,7 +169,7 @@ Only hashes and aggregate byte counts enter the snapshot and admission logs; raw
 source names and evidence text remain outside the audit record. Missing or malformed
 snapshot commitments fail closed in the LLM path. The audit record includes claim and
 claim-citation link counts plus stable reason codes, but does not copy generated
-answer text or citation IDs into policy logs. This provides replay evidence without
+answer text, source passages, or citation IDs into policy logs. This provides replay evidence without
 creating a second store of model-generated content.
 
 Coverage is deliberately narrower than truth verification: the gate proves that
@@ -259,16 +260,31 @@ Example output shape:
 ```json
 {
   "claim": "Audit records must be retained for seven years.",
+  "claim_sha256": "...",
   "best_chunk_id": "policy:3",
   "lexical_support": 0.91,
-  "supported_tokens": ["audit", "records", "retained", "seven", "years"]
+  "supported_tokens": ["audit", "records", "retained", "seven", "years"],
+  "source_span_start_utf8": 84,
+  "source_span_end_utf8": 134,
+  "source_span_sha256": "...",
+  "source_span_commitment_sha256": "..."
 }
 ```
 
 This makes unsupported sentences visible even when the answer as a whole has at
 least one valid citation, while preventing an unrelated top-level citation from
-being selected for a different claim. The score is again deliberately not presented
-as semantic proof.
+being selected for a different claim. Each row selects the shortest best-scoring
+sentence-like passage using deterministic tie-breaking, records half-open UTF-8 byte
+offsets, and commits the exact passage to the claim and chunk identity. Reviewers can
+recompute the span hash and ordered manifest with `verify_claim_support_trace`
+without storing raw source text in the admission audit.
+
+Accepted LLM admissions upgrade to `generation-admission/v4`: the ordered support
+manifest digest and binding flag enter the decision digest and optional HMAC envelope.
+Changing a claim, chunk, offset, passage hash, or support-manifest digest therefore
+breaks verification. The content-bound evidence snapshot still protects mutations
+outside the selected span. These commitments prove byte-level provenance, not semantic
+entailment; the lexical score remains a diagnostic rather than factuality proof.
 
 ## Untrusted-document / prompt-injection policy
 
@@ -430,7 +446,7 @@ src/evidence_snapshot.py bounded content commitments for admitted evidence
 src/generation_policy.py fail-closed model-response admission + decision digests
 src/admission_authentication.py HMAC authentication + durable replay consumption
 src/grounding.py       citation integrity + answer-level lexical support
-src/claims.py          claim-to-cited-chunk tracing
+src/claims.py          claim-to-exact-source-span commitments and verification
 src/prompting.py       zero/one/few-shot prompt construction
 src/prompt_eval.py     prompt-mode experiment harness
 src/retrieval_eval.py  Hit/Recall/Precision/MRR/nDCG metrics
@@ -450,7 +466,7 @@ GitHub Actions runs without an external LLM key and checks:
 - strict model-response admission, content-bound evidence snapshots, per-claim citation completeness, and quarantined-citation rejection;
 - bounded streaming of OpenAI-compatible responses before JSON decoding;
 - HMAC evidence verification and concurrent single-use replay enforcement;
-- claim-to-evidence tracing;
+- deterministic claim-to-source-span tracing and authenticated commitments;
 - prompt-injection quarantine behavior;
 - zero/one/few-shot evaluation harness;
 - requirement-conflict analysis;
