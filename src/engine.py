@@ -12,7 +12,8 @@ import httpx
 from src.admission_authentication import AdmissionAuthenticator
 from src.claims import trace_claim_support
 from src.evidence_policy import apply_evidence_policy
-from src.generation_policy import admit_generation
+from src.evidence_snapshot import build_evidence_snapshot
+from src.generation_policy import GenerationPolicy, admit_generation
 from src.grounding import audit_grounding
 from src.hybrid import HybridSparseRetriever
 from src.prompting import EvidenceSnippet, PromptMode, build_prompt
@@ -25,6 +26,7 @@ RESPONSE_CHUNK_BYTES = 16 * 1024
 DEFAULT_REQUEST_DEADLINE_SECONDS = 60.0
 DEFAULT_CONNECT_TIMEOUT_SECONDS = 5.0
 DEFAULT_READ_TIMEOUT_SECONDS = 30.0
+CONTENT_BOUND_GENERATION_POLICY = GenerationPolicy(require_content_bound_evidence=True)
 
 
 class GeneratorTransportError(RuntimeError):
@@ -348,13 +350,20 @@ class RAGEngine:
         if not safe_evidence:
             return self._insufficient_answer(retrieval, mode, finding_rows, quarantined)
 
+        evidence_snapshot = build_evidence_snapshot(safe_evidence) if use_llm else None
         prompt = build_prompt(question, safe_evidence, mode)
         if use_llm:
             if self.generator is None:
                 self.generator = OpenAICompatibleGenerator()
             payload = self.generator.generate(prompt)
             allowed = {item.chunk_id for item in safe_evidence}
-            admission = admit_generation(payload, allowed)
+            assert evidence_snapshot is not None
+            admission = admit_generation(
+                payload,
+                allowed,
+                CONTENT_BOUND_GENERATION_POLICY,
+                evidence_snapshot_sha256=evidence_snapshot.snapshot_sha256,
+            )
             admission_audit = admission.to_audit_dict()
             admission_authentication = (
                 self.admission_authenticator.authenticate(admission_audit)

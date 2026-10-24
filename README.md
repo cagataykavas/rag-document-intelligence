@@ -29,8 +29,10 @@ flowchart LR
     E --> SEC[Untrusted-evidence policy]
     SEC -->|safe| Z[Zero / one / few-shot prompt]
     SEC -->|high risk| Q[Quarantine trace]
+    SEC --> ES[Content-bound evidence snapshot]
     Z --> G[Extractive or OpenAI-compatible generator]
     G --> AD[Generation-response admission]
+    ES --> AD
     AD --> AU[HMAC-authenticated audit evidence]
     AU --> CV[Citation whitelist + rejected IDs]
     CV --> GA[Grounding audit]
@@ -51,7 +53,7 @@ The engineering work is split into boundaries that can be tested independently:
 - **retrieval:** transparent word + character sparse fusion with diversity reranking;
 - **prompting:** zero-shot, one-shot, and few-shot are explicit code paths;
 - **generation:** optional OpenAI-compatible adapter rather than provider lock-in;
-- **generation admission:** exact response schema, resource limits, type checks, citation allowlisting, per-claim citation completeness, and abstention consistency;
+- **generation admission:** exact response schema, resource limits, type checks, citation allowlisting, content-bound evidence snapshots, per-claim citation completeness, and abstention consistency;
 - **admission authentication:** optional HMAC-SHA256 evidence with key IDs, rotation support, freshness checks, and constant-time verification;
 - **citation integrity:** generated citation IDs are checked against retrieved evidence;
 - **claim support:** answer sentences are mapped back to their strongest cited chunk;
@@ -119,6 +121,7 @@ The response contains:
 - claim-level evidence support rows;
 - evidence-policy findings and quarantined chunk IDs;
 - generation-admission decision, rejection reasons, and reproducibility digests;
+- SHA-256 commitment to the exact safe evidence contents admitted for generation;
 - optional HMAC authentication for the exact admission audit;
 - prompt mode, generator, and retriever identifiers.
 
@@ -156,16 +159,23 @@ sentence-like claim in a factual answer. The gate rejects:
 - non-finite or out-of-range confidence values;
 - abstentions that still cite evidence, and factual answers with no citations.
 
-Every decision includes SHA-256 digests of the payload, normalized claim map,
-evidence whitelist, policy, and final decision. The audit record includes claim and
+Every LLM decision includes SHA-256 digests of the payload, normalized claim map,
+evidence whitelist, content-bound evidence snapshot, policy, and final decision.
+The snapshot commits to each safe chunk's ID, exact UTF-8 text, source identity,
+and byte length after quarantine and before prompt construction. This prevents a
+reused chunk ID with substituted content from producing the same admission evidence.
+Only hashes and aggregate byte counts enter the snapshot and admission logs; raw
+source names and evidence text remain outside the audit record. Missing or malformed
+snapshot commitments fail closed in the LLM path. The audit record includes claim and
 claim-citation link counts plus stable reason codes, but does not copy generated
 answer text or citation IDs into policy logs. This provides replay evidence without
 creating a second store of model-generated content.
 
 Coverage is deliberately narrower than truth verification: the gate proves that
 every declared sentence-like claim is mapped to retrieved, policy-allowed evidence.
-It does not prove that the evidence semantically entails the claim, that the claim
-is factually correct, or that punctuation always matches a linguistic proposition.
+The content commitment proves which evidence bytes were admitted, not that the source
+publisher is authentic. It also does not prove semantic entailment, factual correctness,
+or that punctuation always matches a linguistic proposition.
 
 The OpenAI-compatible transport enforces an earlier resource boundary before JSON
 decoding. It requests an identity-encoded response, rejects unsupported content
@@ -416,6 +426,7 @@ src/store.py           persistent document/chunk storage
 src/retrieval.py       chunking + original sparse baseline
 src/hybrid.py          word+character hybrid sparse retrieval
 src/evidence_policy.py untrusted-document risk policy
+src/evidence_snapshot.py bounded content commitments for admitted evidence
 src/generation_policy.py fail-closed model-response admission + decision digests
 src/admission_authentication.py HMAC authentication + durable replay consumption
 src/grounding.py       citation integrity + answer-level lexical support
@@ -436,7 +447,7 @@ GitHub Actions runs without an external LLM key and checks:
 - persistent ingestion and SHA-256 deduplication;
 - hybrid retrieval and ranking metrics;
 - fabricated citation rejection;
-- strict model-response admission, per-claim citation completeness, and quarantined-citation rejection;
+- strict model-response admission, content-bound evidence snapshots, per-claim citation completeness, and quarantined-citation rejection;
 - bounded streaming of OpenAI-compatible responses before JSON decoding;
 - HMAC evidence verification and concurrent single-use replay enforcement;
 - claim-to-evidence tracing;
