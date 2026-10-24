@@ -15,8 +15,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Callable
 
-AUTH_SCHEMA_VERSION = "generation-admission-authentication/v3"
-ADMISSION_SCHEMA_VERSION = "generation-admission/v3"
+AUTH_SCHEMA_VERSION = "generation-admission-authentication/v4"
+ADMISSION_SCHEMA_VERSION = "generation-admission/v4"
 ALGORITHM = "HMAC-SHA256"
 PURPOSE = "rag-generation-admission"
 MINIMUM_KEY_BYTES = 32
@@ -40,6 +40,8 @@ AUDIT_FIELDS = frozenset(
         "allowed_evidence_sha256",
         "evidence_snapshot_sha256",
         "evidence_snapshot_bound",
+        "claim_support_sha256",
+        "claim_support_bound",
         "policy_sha256",
         "decision_sha256",
     }
@@ -115,6 +117,7 @@ def _normalize_audit(audit: Mapping[str, object]) -> dict[str, object]:
         "claim_map_sha256",
         "allowed_evidence_sha256",
         "evidence_snapshot_sha256",
+        "claim_support_sha256",
         "policy_sha256",
         "decision_sha256",
     )
@@ -124,6 +127,8 @@ def _normalize_audit(audit: Mapping[str, object]) -> dict[str, object]:
     ):
         raise AdmissionAuthenticationError("AUDIT_SCHEMA_INVALID")
     if not isinstance(audit["evidence_snapshot_bound"], bool):
+        raise AdmissionAuthenticationError("AUDIT_SCHEMA_INVALID")
+    if not isinstance(audit["claim_support_bound"], bool):
         raise AdmissionAuthenticationError("AUDIT_SCHEMA_INVALID")
 
     normalized = dict(audit)
@@ -136,6 +141,8 @@ def _normalize_audit(audit: Mapping[str, object]) -> dict[str, object]:
         "allowed_evidence_sha256": normalized["allowed_evidence_sha256"],
         "evidence_snapshot_sha256": normalized["evidence_snapshot_sha256"],
         "evidence_snapshot_bound": normalized["evidence_snapshot_bound"],
+        "claim_support_sha256": normalized["claim_support_sha256"],
+        "claim_support_bound": normalized["claim_support_bound"],
         "policy_sha256": normalized["policy_sha256"],
     }
     if not hmac.compare_digest(
