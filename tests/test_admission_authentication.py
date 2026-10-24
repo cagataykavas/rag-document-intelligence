@@ -119,6 +119,23 @@ def test_tampered_decision_digest_is_rejected_before_signing():
     )
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("evidence_snapshot_sha256", "f" * 64),
+        ("evidence_snapshot_bound", True),
+    ],
+)
+def test_tampered_evidence_binding_is_rejected_before_signing(field: str, value):
+    audit = valid_audit()
+    audit[field] = value
+
+    assert_error(
+        "DECISION_DIGEST_MISMATCH",
+        lambda: AdmissionAuthenticator("primary", KEY).authenticate(audit),
+    )
+
+
 def test_tampered_signature_and_unknown_key_fail_closed():
     signer = AdmissionAuthenticator("primary", KEY, clock=lambda: ISSUED_AT)
     audit = valid_audit()
@@ -404,6 +421,7 @@ def test_engine_authenticates_both_accepted_and_rejected_llm_decisions(
     answer = engine.answer("How long are audit records retained?", use_llm=True)
 
     assert answer.generation_admission["accepted"] is accepted
+    assert answer.generation_admission["evidence_snapshot_bound"] is True
     assert answer.generation_admission_authentication["applied"] is True
     verify_admission_authentication(
         answer.generation_admission,

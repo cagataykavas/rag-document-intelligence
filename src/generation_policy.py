@@ -9,7 +9,7 @@ from typing import Any
 
 from src.claims import split_claims
 
-SCHEMA_VERSION = "generation-admission/v2"
+SCHEMA_VERSION = "generation-admission/v3"
 EXPECTED_FIELDS = frozenset(
     {
         "answer",
@@ -32,6 +32,7 @@ class GenerationPolicy:
     max_citations: int = 20
     max_claims: int = 32
     max_citations_per_claim: int = 5
+    require_content_bound_evidence: bool = False
 
 
 DEFAULT_GENERATION_POLICY = GenerationPolicy()
@@ -55,6 +56,8 @@ class GenerationAdmission:
     payload_sha256: str
     claim_map_sha256: str
     allowed_evidence_sha256: str
+    evidence_snapshot_sha256: str
+    evidence_snapshot_bound: bool
     policy_sha256: str
     decision_sha256: str
 
@@ -73,6 +76,8 @@ class GenerationAdmission:
             "payload_sha256": self.payload_sha256,
             "claim_map_sha256": self.claim_map_sha256,
             "allowed_evidence_sha256": self.allowed_evidence_sha256,
+            "evidence_snapshot_sha256": self.evidence_snapshot_sha256,
+            "evidence_snapshot_bound": self.evidence_snapshot_bound,
             "policy_sha256": self.policy_sha256,
             "decision_sha256": self.decision_sha256,
         }
@@ -102,6 +107,8 @@ def admit_generation(
     payload: Any,
     allowed_evidence_ids: set[str] | frozenset[str],
     policy: GenerationPolicy = DEFAULT_GENERATION_POLICY,
+    *,
+    evidence_snapshot_sha256: str | None = None,
 ) -> GenerationAdmission:
     """Validate untrusted model output and fail closed on every contract breach.
 
@@ -120,6 +127,25 @@ def admit_generation(
     claims: tuple[str, ...] = ()
     confidence = 0.0
     insufficient_evidence = True
+    evidence_snapshot_bound = evidence_snapshot_sha256 is not None
+    if evidence_snapshot_sha256 is None:
+        evidence_snapshot_sha256 = _sha256(
+            _canonical_json(
+                {
+                    "mode": "ids-only",
+                    "allowed_evidence_ids": sorted(allowed),
+                }
+            )
+        )
+    elif (
+        not isinstance(evidence_snapshot_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", evidence_snapshot_sha256) is None
+    ):
+        _add_reason(reasons, "evidence_snapshot_sha256_invalid")
+        evidence_snapshot_sha256 = "0" * 64
+        evidence_snapshot_bound = False
+    if policy.require_content_bound_evidence and not evidence_snapshot_bound:
+        _add_reason(reasons, "content_bound_evidence_required")
 
     if len(payload_bytes) > policy.max_payload_bytes:
         _add_reason(reasons, "payload_too_large")
@@ -237,7 +263,9 @@ def admit_generation(
                 if covered_indexes != set(range(len(claims))):
                     _add_reason(reasons, "incomplete_claim_citation_coverage")
                 used_citations = {
-                    citation for _, claim_ids in claim_citations for citation in claim_ids
+                    citation
+                    for _, claim_ids in claim_citations
+                    for citation in claim_ids
                 }
                 if used_citations != set(citations):
                     _add_reason(reasons, "citation_not_mapped_to_claim")
@@ -254,6 +282,8 @@ def admit_generation(
             "reasons": reasons,
             "payload_sha256": payload_sha256,
             "allowed_evidence_sha256": allowed_evidence_sha256,
+            "evidence_snapshot_sha256": evidence_snapshot_sha256,
+            "evidence_snapshot_bound": evidence_snapshot_bound,
             "policy_sha256": policy_sha256,
         }
     )
@@ -273,6 +303,8 @@ def admit_generation(
         payload_sha256=payload_sha256,
         claim_map_sha256=claim_map_sha256,
         allowed_evidence_sha256=allowed_evidence_sha256,
+        evidence_snapshot_sha256=evidence_snapshot_sha256,
+        evidence_snapshot_bound=evidence_snapshot_bound,
         policy_sha256=policy_sha256,
         decision_sha256=_sha256(decision_bytes),
     )

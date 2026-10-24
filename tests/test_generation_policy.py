@@ -60,17 +60,13 @@ def test_valid_response_is_admitted_deterministically():
         (
             valid_payload(
                 answer="First claim. Second claim.",
-                claim_citations=[
-                    {"claim_index": 0, "citations": ["doc-123:0"]}
-                ],
+                claim_citations=[{"claim_index": 0, "citations": ["doc-123:0"]}],
             ),
             "incomplete_claim_citation_coverage",
         ),
         (
             valid_payload(
-                claim_citations=[
-                    {"claim_index": 0, "citations": ["doc-999:0"]}
-                ]
+                claim_citations=[{"claim_index": 0, "citations": ["doc-999:0"]}]
             ),
             "claim_citation_not_declared",
         ),
@@ -91,9 +87,7 @@ def test_valid_response_is_admitted_deterministically():
         (
             valid_payload(
                 citations=["doc-123:0", "doc-123:1"],
-                claim_citations=[
-                    {"claim_index": 0, "citations": ["doc-123:0"]}
-                ],
+                claim_citations=[{"claim_index": 0, "citations": ["doc-123:0"]}],
             ),
             "citation_not_mapped_to_claim",
         ),
@@ -147,8 +141,39 @@ def test_audit_record_does_not_copy_generated_content_or_citation_ids():
     assert audit["payload_sha256"]
     assert audit["claim_map_sha256"]
     assert audit["allowed_evidence_sha256"]
+    assert audit["evidence_snapshot_sha256"]
+    assert audit["evidence_snapshot_bound"] is False
     assert audit["policy_sha256"]
     assert audit["decision_sha256"]
+
+
+def test_content_bound_policy_requires_valid_snapshot_digest():
+    policy = GenerationPolicy(require_content_bound_evidence=True)
+
+    missing = admit_generation(valid_payload(), ALLOWED, policy)
+    invalid = admit_generation(
+        valid_payload(),
+        ALLOWED,
+        policy,
+        evidence_snapshot_sha256="not-a-sha256",
+    )
+    bound = admit_generation(
+        valid_payload(),
+        ALLOWED,
+        policy,
+        evidence_snapshot_sha256="a" * 64,
+    )
+
+    assert missing.accepted is False
+    assert "content_bound_evidence_required" in missing.reasons
+    assert missing.evidence_snapshot_bound is False
+    assert invalid.accepted is False
+    assert "evidence_snapshot_sha256_invalid" in invalid.reasons
+    assert "content_bound_evidence_required" in invalid.reasons
+    assert invalid.evidence_snapshot_bound is False
+    assert bound.accepted is True
+    assert bound.evidence_snapshot_bound is True
+    assert bound.evidence_snapshot_sha256 == "a" * 64
 
 
 def test_claim_map_is_order_normalized_and_privacy_reduced():
@@ -235,6 +260,8 @@ def test_engine_accepts_valid_model_response(tmp_path: Path, monkeypatch):
     assert answer.citations == (safe_id,)
     assert answer.generation_admission["accepted"] is True
     assert answer.generation_admission["reasons"] == ()
+    assert answer.generation_admission["evidence_snapshot_bound"] is True
+    assert len(answer.generation_admission["evidence_snapshot_sha256"]) == 64
 
 
 def test_engine_rejects_citation_to_quarantined_evidence(tmp_path: Path, monkeypatch):
