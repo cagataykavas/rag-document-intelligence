@@ -47,7 +47,7 @@ flowchart LR
 
 The engineering work is split into boundaries that can be tested independently:
 
-- **parsing:** PDF, Markdown, text, JSON, and CSV normalization;
+- **parsing:** PDF, Markdown, text, JSON, and CSV normalization, with page-native PDF boundaries;
 - **persistence:** documents and chunks survive process restarts;
 - **idempotent ingestion:** SHA-256 prevents silent duplicate indexing;
 - **retrieval:** transparent word + character sparse fusion with diversity reranking;
@@ -122,6 +122,7 @@ The response contains:
 - evidence-policy findings and quarantined chunk IDs;
 - generation-admission decision, rejection reasons, and reproducibility digests;
 - SHA-256 commitment to the exact safe evidence contents admitted for generation;
+- page number, page-local UTF-8 range, and normalized-page digest for newly indexed PDF evidence;
 - optional HMAC authentication for the exact admission audit;
 - prompt mode, generator, and retriever identifiers.
 
@@ -163,7 +164,7 @@ Every LLM decision includes SHA-256 digests of the payload, normalized claim map
 evidence whitelist, content-bound evidence snapshot, exact claim-support spans,
 policy, and final decision.
 The snapshot commits to each safe chunk's ID, exact UTF-8 text, source identity,
-and byte length after quarantine and before prompt construction. This prevents a
+byte length, and optional PDF page locator after quarantine and before prompt construction. This prevents a
 reused chunk ID with substituted content from producing the same admission evidence.
 Only hashes and aggregate byte counts enter the snapshot and admission logs; raw
 source names and evidence text remain outside the audit record. Missing or malformed
@@ -171,6 +172,14 @@ snapshot commitments fail closed in the LLM path. The audit record includes clai
 claim-citation link counts plus stable reason codes, but does not copy generated
 answer text, source passages, or citation IDs into policy logs. This provides replay evidence without
 creating a second store of model-generated content.
+
+New PDF ingestion keeps chunks within one extracted page and persists a half-open
+page-local UTF-8 range plus the normalized page-text digest. Retrieval exposes this
+locator, and `evidence-snapshot/v2` binds its canonical digest to generation
+admission. Existing databases migrate with nullable locator columns and remain
+queryable; old chunks are not assigned invented provenance. See
+[`docs/pdf-page-provenance.md`](docs/pdf-page-provenance.md) for verification and
+parser trust boundaries.
 
 Coverage is deliberately narrower than truth verification: the gate proves that
 every declared sentence-like claim is mapped to retrieved, policy-allowed evidence.
@@ -438,7 +447,7 @@ The adapter can be replaced with PostgreSQL/pgvector, OpenSearch, Qdrant, or ano
 ```text
 app/api.py             FastAPI ingestion/query/conflict service
 src/parsers.py         document normalization
-src/store.py           persistent document/chunk storage
+src/store.py           persistent document/chunk storage + PDF page locators
 src/retrieval.py       chunking + original sparse baseline
 src/hybrid.py          word+character hybrid sparse retrieval
 src/evidence_policy.py untrusted-document risk policy
@@ -467,6 +476,7 @@ GitHub Actions runs without an external LLM key and checks:
 - bounded streaming of OpenAI-compatible responses before JSON decoding;
 - HMAC evidence verification and concurrent single-use replay enforcement;
 - deterministic claim-to-source-span tracing and authenticated commitments;
+- page-bounded PDF chunking and content-bound page locators;
 - prompt-injection quarantine behavior;
 - zero/one/few-shot evaluation harness;
 - requirement-conflict analysis;

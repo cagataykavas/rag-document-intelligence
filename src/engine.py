@@ -337,7 +337,12 @@ class RAGEngine:
     ) -> Answer:
         retrieval = self.retrieve(question, k=k)
         evidence = [
-            EvidenceSnippet(item["chunk_id"], item["source"], item["text"])
+            EvidenceSnippet(
+                item["chunk_id"],
+                item["source"],
+                item["text"],
+                item.get("source_locator"),
+            )
             for item in retrieval
             if item["score"] > 0
         ]

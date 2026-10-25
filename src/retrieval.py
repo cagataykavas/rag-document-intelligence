@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import re
+from dataclasses import asdict, dataclass
 from typing import Iterable
 
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -15,11 +16,35 @@ class Document:
 
 
 @dataclass(frozen=True)
+class SourceLocator:
+    page_number: int
+    page_start_utf8: int
+    page_end_utf8: int
+    page_text_sha256: str
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.page_number) is not int
+            or self.page_number < 1
+            or type(self.page_start_utf8) is not int
+            or type(self.page_end_utf8) is not int
+            or not 0 <= self.page_start_utf8 < self.page_end_utf8
+            or not isinstance(self.page_text_sha256, str)
+            or re.fullmatch(r"[0-9a-f]{64}", self.page_text_sha256) is None
+        ):
+            raise ValueError("invalid source locator")
+
+    def to_dict(self) -> dict[str, int | str]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class Chunk:
     chunk_id: str
     doc_id: str
     source: str
     text: str
+    source_locator: SourceLocator | None = None
 
 
 def chunk_documents(documents: Iterable[Document], words_per_chunk: int = 90, overlap: int = 20) -> list[Chunk]:
@@ -55,7 +80,21 @@ class SparseRetriever:
         query_vector = self.vectorizer.transform([query])
         scores = cosine_similarity(query_vector, self.matrix).ravel()
         ranking = scores.argsort()[::-1][:k]
-        return [{"score": float(scores[i]), "chunk_id": self.chunks[i].chunk_id, "doc_id": self.chunks[i].doc_id, "source": self.chunks[i].source, "text": self.chunks[i].text} for i in ranking]
+        return [
+            {
+                "score": float(scores[i]),
+                "chunk_id": self.chunks[i].chunk_id,
+                "doc_id": self.chunks[i].doc_id,
+                "source": self.chunks[i].source,
+                "text": self.chunks[i].text,
+                "source_locator": (
+                    self.chunks[i].source_locator.to_dict()
+                    if self.chunks[i].source_locator is not None
+                    else None
+                ),
+            }
+            for i in ranking
+        ]
 
 
 def reciprocal_rank(results: list[dict], relevant_doc_id: str) -> float:

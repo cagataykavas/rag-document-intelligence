@@ -96,6 +96,11 @@ class HybridSparseRetriever:
                 "doc_id": self.chunks[index].doc_id,
                 "source": self.chunks[index].source,
                 "text": self.chunks[index].text,
+                "source_locator": (
+                    self.chunks[index].source_locator.to_dict()
+                    if self.chunks[index].source_locator is not None
+                    else None
+                ),
             }
             for rank, index in enumerate(selected, start=1)
         ]

@@ -81,7 +81,13 @@ def ingest_inline(request: InlineDocumentRequest) -> dict:
         path = Path(directory) / Path(request.name).name
         path.write_text(request.text, encoding="utf-8")
         parsed = parse(path)
-        parsed = type(parsed)(request.name, parsed.media_type, parsed.text, parsed.metadata)
+        parsed = type(parsed)(
+            request.name,
+            parsed.media_type,
+            parsed.text,
+            parsed.metadata,
+            parsed.pages,
+        )
         return asdict(STORE.ingest(parsed))
 
 
@@ -106,7 +112,13 @@ async def ingest_upload(
             parsed = parse(path)
         except Exception as exc:
             raise HTTPException(422, f"document parsing failed: {exc}") from exc
-        parsed = type(parsed)(file.filename or path.name, parsed.media_type, parsed.text, parsed.metadata)
+        parsed = type(parsed)(
+            file.filename or path.name,
+            parsed.media_type,
+            parsed.text,
+            parsed.metadata,
+            parsed.pages,
+        )
         return asdict(STORE.ingest(parsed, words_per_chunk=words_per_chunk, overlap=overlap))
 
 

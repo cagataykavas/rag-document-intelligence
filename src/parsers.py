@@ -12,11 +12,18 @@ from pypdf import PdfReader
 
 
 @dataclass(frozen=True)
+class ParsedPage:
+    number: int
+    text: str
+
+
+@dataclass(frozen=True)
 class ParsedDocument:
     source: str
     media_type: str
     text: str
     metadata: dict[str, Any]
+    pages: tuple[ParsedPage, ...] = ()
 
 
 def parse_text(path: Path) -> ParsedDocument:
@@ -43,17 +50,20 @@ def parse_csv(path: Path) -> ParsedDocument:
 def parse_pdf(path: Path) -> ParsedDocument:
     reader = PdfReader(str(path))
     pages: list[str] = []
+    parsed_pages: list[ParsedPage] = []
     non_empty_pages = 0
     for page_number, page in enumerate(reader.pages, start=1):
         text = (page.extract_text() or "").strip()
         if text:
             non_empty_pages += 1
+        parsed_pages.append(ParsedPage(number=page_number, text=text))
         pages.append(f"[Page {page_number}]\n{text}")
     return ParsedDocument(
         str(path),
         "application/pdf",
         "\n\n".join(pages),
         {"pages": len(reader.pages), "pages_with_text": non_empty_pages},
+        tuple(parsed_pages),
     )
 
 
