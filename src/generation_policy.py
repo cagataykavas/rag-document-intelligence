@@ -36,6 +36,7 @@ class GenerationPolicy:
 
 
 DEFAULT_GENERATION_POLICY = GenerationPolicy()
+CONTENT_BOUND_GENERATION_POLICY = GenerationPolicy(require_content_bound_evidence=True)
 
 
 @dataclass(frozen=True)

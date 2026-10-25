@@ -332,11 +332,19 @@ Examples never contain the answer to the live question. Retrieved evidence remai
 Metrics per mode:
 
 - structured-schema validity;
+- exact production admission rate using the same content-bound generation policy as
+  the serving path;
 - generated citation validity;
 - insufficient-evidence decision accuracy;
+- bounded generator-error rate and content-free admission reason counts;
 - average confidence;
 - prompt character cost;
 - latency.
+
+The command is also a CI-friendly release gate. Every mode must meet the configured
+thresholds; a rejected benchmark exits with status `2`, while provider exception
+messages are never copied into the report. Defaults are intentionally strict. For a
+larger noisy suite, thresholds can be reviewed explicitly:
 
 With an OpenAI-compatible model configured:
 
@@ -348,7 +356,11 @@ export LLM_MODEL=my-local-model
 python -m src.cli prompt-benchmark \
   --database data/rag.db \
   --cases examples/prompt_cases.json \
-  --k 5
+  --k 5 \
+  --min-admission-rate 0.98 \
+  --min-citation-validity-rate 1.0 \
+  --min-insufficiency-accuracy 0.98 \
+  --max-generator-error-rate 0.01
 ```
 
 Example case format:
@@ -362,7 +374,11 @@ Example case format:
 ]
 ```
 
-The benchmark exists specifically so “few-shot” is an experimental setting rather than an interview buzzword.
+The benchmark builds the same exact-evidence snapshot used by online LLM admission,
+then applies the production claim/citation contract. A superficially well-formed
+payload with an incomplete claim map, an invented citation, or an inconsistent
+abstention therefore cannot pass the release gate. This evaluates contract safety,
+not semantic entailment or factual truth.
 
 ## Optional LLM wrapper
 
