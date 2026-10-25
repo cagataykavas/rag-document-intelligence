@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import asdict, dataclass
 from typing import Iterable
 
 from src.prompting import EvidenceSnippet
 
-SCHEMA_VERSION = "evidence-snapshot/v1"
+SCHEMA_VERSION = "evidence-snapshot/v2"
 MAX_SNAPSHOT_CHUNKS = 50
 MAX_CHUNK_BYTES = 1024 * 1024
 MAX_SOURCE_BYTES = 4_096
@@ -23,6 +24,7 @@ class EvidenceCommitment:
     source_sha256: str
     text_sha256: str
     text_utf8_bytes: int
+    source_locator_sha256: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +61,35 @@ def _sha256(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+def _source_locator_sha256(locator: object, text_utf8_bytes: int) -> str | None:
+    if locator is None:
+        return None
+    fields = {
+        "page_number",
+        "page_start_utf8",
+        "page_end_utf8",
+        "page_text_sha256",
+    }
+    if not isinstance(locator, dict) or set(locator) != fields:
+        raise EvidenceSnapshotError("source locator schema is invalid")
+    page_number = locator["page_number"]
+    start = locator["page_start_utf8"]
+    end = locator["page_end_utf8"]
+    page_sha256 = locator["page_text_sha256"]
+    if (
+        type(page_number) is not int
+        or page_number < 1
+        or type(start) is not int
+        or type(end) is not int
+        or not 0 <= start < end
+        or end - start != text_utf8_bytes
+        or not isinstance(page_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", page_sha256) is None
+    ):
+        raise EvidenceSnapshotError("source locator values are invalid")
+    return _sha256(_canonical_json(locator))
+
+
 def build_evidence_snapshot(snippets: Iterable[EvidenceSnippet]) -> EvidenceSnapshot:
     """Bind chunk identity, source identity and exact text without retaining content."""
 
@@ -93,6 +124,10 @@ def build_evidence_snapshot(snippets: Iterable[EvidenceSnippet]) -> EvidenceSnap
                 source_sha256=_sha256(source_bytes),
                 text_sha256=_sha256(text_bytes),
                 text_utf8_bytes=len(text_bytes),
+                source_locator_sha256=_source_locator_sha256(
+                    snippet.source_locator,
+                    len(text_bytes),
+                ),
             )
         )
 

@@ -16,6 +16,7 @@ class EvidenceSnippet:
     chunk_id: str
     source: str
     text: str
+    source_locator: dict[str, int | str] | None = None
 
 
 EXAMPLES = [
