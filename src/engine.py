@@ -13,7 +13,11 @@ from src.admission_authentication import AdmissionAuthenticator
 from src.claims import claim_support_sha256, trace_claim_support
 from src.evidence_policy import apply_evidence_policy
 from src.evidence_snapshot import build_evidence_snapshot
-from src.generation_policy import GenerationPolicy, admit_generation, bind_claim_support
+from src.generation_policy import (
+    CONTENT_BOUND_GENERATION_POLICY,
+    admit_generation,
+    bind_claim_support,
+)
 from src.grounding import audit_grounding
 from src.hybrid import HybridSparseRetriever
 from src.prompting import EvidenceSnippet, PromptMode, build_prompt
@@ -26,7 +30,6 @@ RESPONSE_CHUNK_BYTES = 16 * 1024
 DEFAULT_REQUEST_DEADLINE_SECONDS = 60.0
 DEFAULT_CONNECT_TIMEOUT_SECONDS = 5.0
 DEFAULT_READ_TIMEOUT_SECONDS = 30.0
-CONTENT_BOUND_GENERATION_POLICY = GenerationPolicy(require_content_bound_evidence=True)
 
 
 class GeneratorTransportError(RuntimeError):

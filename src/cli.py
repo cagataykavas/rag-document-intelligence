@@ -8,7 +8,7 @@ from pathlib import Path
 from src.engine import OpenAICompatibleGenerator, RAGEngine
 from src.evidence_policy import apply_evidence_policy
 from src.parsers import parse
-from src.prompt_eval import PromptEvalCase, evaluate_prompt_modes
+from src.prompt_eval import PromptEvalCase, PromptReleasePolicy, evaluate_prompt_modes
 from src.prompting import EvidenceSnippet, PromptMode
 from src.store import DocumentStore
 
@@ -20,13 +20,18 @@ def ingest_command(args) -> None:
         path = Path(raw)
         candidates = sorted(path.rglob("*")) if path.is_dir() else [path]
         for candidate in candidates:
-            if (
-                not candidate.is_file()
-                or candidate.suffix.lower() not in {".txt", ".md", ".json", ".csv", ".pdf"}
-            ):
+            if not candidate.is_file() or candidate.suffix.lower() not in {
+                ".txt",
+                ".md",
+                ".json",
+                ".csv",
+                ".pdf",
+            }:
                 continue
             parsed = parse(candidate)
-            results.append(asdict(store.ingest(parsed, args.words_per_chunk, args.overlap)))
+            results.append(
+                asdict(store.ingest(parsed, args.words_per_chunk, args.overlap))
+            )
     print(json.dumps(results, indent=2))
 
 
@@ -45,10 +50,14 @@ def query_command(args) -> None:
 
 
 def list_command(args) -> None:
-    print(json.dumps(DocumentStore(args.database).documents(), ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            DocumentStore(args.database).documents(), ensure_ascii=False, indent=2
+        )
+    )
 
 
-def prompt_benchmark_command(args) -> None:
+def prompt_benchmark_command(args) -> int:
     payload = json.loads(args.cases.read_text(encoding="utf-8"))
     if not isinstance(payload, list):
         raise SystemExit("prompt benchmark cases must be a JSON array")
@@ -76,15 +85,29 @@ def prompt_benchmark_command(args) -> None:
             )
         )
 
+    release_policy = PromptReleasePolicy(
+        min_admission_rate=args.min_admission_rate,
+        min_citation_validity_rate=args.min_citation_validity_rate,
+        min_insufficiency_accuracy=args.min_insufficiency_accuracy,
+        max_generator_error_rate=args.max_generator_error_rate,
+    )
     with OpenAICompatibleGenerator() as generator:
+        modes = evaluate_prompt_modes(
+            cases,
+            generator.generate,
+            release_policy=release_policy,
+        )
         result = {
             "cases": len(cases),
             "retrieval_k": args.k,
             "quarantined_chunks": quarantined_total,
             "generator": generator.model,
-            "modes": evaluate_prompt_modes(cases, generator.generate),
+            "release_policy": asdict(release_policy),
+            "release_accepted": all(row["release_accepted"] for row in modes.values()),
+            "modes": modes,
         }
     print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["release_accepted"] else 2
 
 
 def main() -> None:
@@ -118,13 +141,17 @@ def main() -> None:
     )
     benchmark.add_argument("--cases", type=Path, required=True)
     benchmark.add_argument("--k", type=int, default=5)
+    benchmark.add_argument("--min-admission-rate", type=float, default=1.0)
+    benchmark.add_argument("--min-citation-validity-rate", type=float, default=1.0)
+    benchmark.add_argument("--min-insufficiency-accuracy", type=float, default=1.0)
+    benchmark.add_argument("--max-generator-error-rate", type=float, default=0.0)
     benchmark.set_defaults(func=prompt_benchmark_command)
 
     listing = sub.add_parser("list")
     listing.set_defaults(func=list_command)
 
     args = parser.parse_args()
-    args.func(args)
+    raise SystemExit(args.func(args) or 0)
 
 
 if __name__ == "__main__":
