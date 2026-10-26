@@ -385,9 +385,10 @@ not semantic entailment or factual truth.
 `src/entailment_eval.py` evaluates a caller-supplied entailment scorer on labeled
 supported/unsupported claim-evidence pairs without weakening deterministic generation
 admission. It selects a risk-aware threshold only from a calibration split, then freezes
-that threshold for a disjoint holdout split. Duplicate case IDs, duplicate contents and
-cross-split content overlap fail closed, preventing renamed examples from inflating the
-holdout result.
+that threshold for a disjoint holdout split. Duplicate IDs, exact contents, and versioned
+Unicode-normalized character-shingle near-duplicates fail closed within or across splits.
+The bounded comparison policy prevents repetitive suites from causing unbounded work before
+the untrusted scorer is invoked.
 
 The content-minimizing report exposes confusion matrices, supported precision/recall,
 unsupported recall, balanced accuracy, explicit policy failures and SHA-256 commitments
@@ -514,7 +515,7 @@ GitHub Actions runs without an external LLM key and checks:
 - page-bounded PDF chunking and content-bound page locators;
 - prompt-injection quarantine behavior;
 - zero/one/few-shot evaluation harness;
-- disjoint-split entailment calibration, bounded scorer failures, and privacy-reduced reports;
+- disjoint-split entailment calibration, bounded near-duplicate leakage checks, scorer failures, and privacy-reduced reports;
 - requirement-conflict analysis;
 - REST API behavior;
 - Docker Compose validation;

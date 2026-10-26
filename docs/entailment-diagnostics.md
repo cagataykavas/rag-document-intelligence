@@ -51,8 +51,17 @@ precision, balanced accuracy and the more conservative threshold break ties dete
 selected threshold is then applied unchanged to the holdout evaluation split.
 
 Both splits must contain both labels. Duplicate case IDs or claim-evidence contents are rejected
-within a split, and case-ID or content overlap across calibration and holdout fails closed. These
-checks prevent a renamed duplicate from inflating holdout performance.
+within a split, and case-ID or content overlap across calibration and holdout fails closed. A
+versioned Unicode NFKC + casefold + punctuation normalization guard also canonicalizes the combining
+dot produced by Turkish dotted-I casing and compares five-character shingle sets. A pair is
+near-duplicate only when both its claim and evidence meet the configured Jaccard threshold. This
+catches renamed examples with superficial casing, spacing, punctuation, or minor textual edits
+without treating a shared generic claim alone as leakage.
+
+Candidate generation uses a shingle index rather than comparing every pair blindly. The policy
+also bounds the total exact similarity comparisons; a highly repetitive or unexpectedly large suite
+that exceeds that budget fails before invoking the scorer. The normalization version, threshold,
+comparison budget, and observed comparison count are committed into the audit report.
 
 ## Bounded untrusted scorer boundary
 
@@ -67,7 +76,8 @@ The report contains:
 - the full confusion matrix for calibration and holdout;
 - explicit policy-failure reason codes;
 - SHA-256 commitments to case identity, exact claim/evidence contents, labels and scores;
-- policy and final report commitments.
+- policy and final report commitments;
+- the versioned near-duplicate guard and number of bounded similarity comparisons.
 
 Raw claim and evidence text are intentionally omitted from the audit report. These hashes are
 integrity commitments, not anonymization; predictable text may still be vulnerable to guessing.
@@ -80,6 +90,8 @@ the report as one reviewed release input, but deterministic admission remains th
 boundary.
 
 The harness does not provide a pretrained entailment model, establish source authority or prove
-factual truth. Performance depends on representative labels and may drift by language, domain,
-claim granularity and evidence length. Deployments should version the scorer ID, keep a sealed
-holdout set, review class balance and recalibrate after any scorer or data-distribution change.
+factual truth. Character-shingle similarity catches surface-near copies, not semantic paraphrases;
+it can also reject legitimately repeated boilerplate when both claim and evidence are very similar.
+Performance depends on representative labels and may drift by language, domain, claim granularity
+and evidence length. Deployments should version the scorer ID, keep a sealed holdout set, review
+class balance and recalibrate after any scorer or data-distribution change.
