@@ -59,7 +59,7 @@ The engineering work is split into boundaries that can be tested independently:
 - **claim support:** answer sentences are mapped back to their strongest cited chunk;
 - **untrusted evidence:** instruction-like document content is scanned and high-risk chunks are quarantined from generation;
 - **conflict analysis:** deterministic numeric, negation, and modality contradiction checks;
-- **evaluation:** retrieval, grounding, prompt behavior, and latency are measured separately.
+- **evaluation:** retrieval, grounding, prompt behavior, calibrated claim entailment, and latency are measured separately.
 
 ## Quick start
 
@@ -380,6 +380,24 @@ payload with an incomplete claim map, an invented citation, or an inconsistent
 abstention therefore cannot pass the release gate. This evaluates contract safety,
 not semantic entailment or factual truth.
 
+## Calibrated entailment diagnostic
+
+`src/entailment_eval.py` evaluates a caller-supplied entailment scorer on labeled
+supported/unsupported claim-evidence pairs without weakening deterministic generation
+admission. It selects a risk-aware threshold only from a calibration split, then freezes
+that threshold for a disjoint holdout split. Duplicate case IDs, duplicate contents and
+cross-split content overlap fail closed, preventing renamed examples from inflating the
+holdout result.
+
+The content-minimizing report exposes confusion matrices, supported precision/recall,
+unsupported recall, balanced accuracy, explicit policy failures and SHA-256 commitments
+to the exact labels and scores. Raw claims and evidence are not copied into the audit
+record. Scorer exceptions and invalid probabilities are contained at the evaluation
+boundary. This is a probabilistic release diagnostic—not online execution authority and
+not proof of source authority or factual truth. See
+[`docs/entailment-diagnostics.md`](docs/entailment-diagnostics.md) for the calibration
+contract and limitations.
+
 ## Optional LLM wrapper
 
 ```bash
@@ -474,6 +492,7 @@ src/grounding.py       citation integrity + answer-level lexical support
 src/claims.py          claim-to-exact-source-span commitments and verification
 src/prompting.py       zero/one/few-shot prompt construction
 src/prompt_eval.py     prompt-mode experiment harness
+src/entailment_eval.py leakage-safe calibrated entailment diagnostic
 src/retrieval_eval.py  Hit/Recall/Precision/MRR/nDCG metrics
 src/evaluate.py        labelled end-to-end evaluation
 src/conflicts.py       deterministic requirement contradictions
@@ -495,6 +514,7 @@ GitHub Actions runs without an external LLM key and checks:
 - page-bounded PDF chunking and content-bound page locators;
 - prompt-injection quarantine behavior;
 - zero/one/few-shot evaluation harness;
+- disjoint-split entailment calibration, bounded scorer failures, and privacy-reduced reports;
 - requirement-conflict analysis;
 - REST API behavior;
 - Docker Compose validation;
@@ -505,7 +525,7 @@ GitHub Actions runs without an external LLM key and checks:
 - dense embedding retriever + ANN index;
 - BM25 + dense reciprocal-rank fusion;
 - cross-encoder reranking;
-- semantic claim entailment verifier;
+- multilingual entailment scorer adapter with drift monitoring;
 - page-native PDF provenance;
 - PostgreSQL + pgvector / OpenSearch persistence;
 - Bedrock, Vertex AI, Azure Foundry, and local-vLLM adapters;
