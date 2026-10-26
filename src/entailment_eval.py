@@ -4,13 +4,17 @@ import hashlib
 import json
 import math
 import re
+import unicodedata
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 
-SCHEMA_VERSION = "entailment-diagnostic/v1"
+SCHEMA_VERSION = "entailment-diagnostic/v2"
+LEAKAGE_GUARD_VERSION = "unicode-nfkc-casefold-tr-dot-char5-jaccard/v1"
 _CASE_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}")
 _SCORER_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}")
+_NON_WORD_RE = re.compile(r"[^\w]+", flags=re.UNICODE)
+_SHINGLE_SIZE = 5
 
 EntailmentScorer = Callable[[str, str], float]
 
@@ -46,6 +50,8 @@ class EntailmentPolicy:
     max_claim_utf8_bytes: int = 16_384
     max_evidence_utf8_bytes: int = 65_536
     max_split_utf8_bytes: int = 16 * 1024 * 1024
+    near_duplicate_similarity_threshold: float = 0.9
+    max_near_duplicate_comparisons: int = 1_000_000
 
     def __post_init__(self) -> None:
         for name in ("min_supported_precision", "min_supported_recall"):
@@ -57,6 +63,16 @@ class EntailmentPolicy:
                 or not 0.0 <= float(value) <= 1.0
             ):
                 raise ValueError(f"{name} must be finite and between 0 and 1")
+        threshold = self.near_duplicate_similarity_threshold
+        if (
+            isinstance(threshold, bool)
+            or not isinstance(threshold, (int, float))
+            or not math.isfinite(threshold)
+            or not 0.0 < float(threshold) <= 1.0
+        ):
+            raise ValueError(
+                "near_duplicate_similarity_threshold must be finite and in (0, 1]"
+            )
         limits = {
             "max_pairs_per_split": (self.max_pairs_per_split, 2, 100_000),
             "max_claim_utf8_bytes": (self.max_claim_utf8_bytes, 1, 1_048_576),
@@ -69,6 +85,11 @@ class EntailmentPolicy:
                 self.max_split_utf8_bytes,
                 2,
                 256 * 1024 * 1024,
+            ),
+            "max_near_duplicate_comparisons": (
+                self.max_near_duplicate_comparisons,
+                1,
+                50_000_000,
             ),
         }
         for name, (value, minimum, maximum) in limits.items():
@@ -92,6 +113,7 @@ class EntailmentMetrics:
 @dataclass(frozen=True, slots=True)
 class EntailmentDiagnosticReport:
     schema_version: str
+    leakage_guard_version: str
     scorer_id: str
     threshold: float
     calibration: EntailmentMetrics
@@ -102,6 +124,7 @@ class EntailmentDiagnosticReport:
     report_sha256: str
     meets_policy: bool
     failure_reasons: tuple[str, ...]
+    near_duplicate_comparisons: int
 
     def to_audit_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -112,6 +135,8 @@ class _ValidatedPair:
     pair: EntailmentPair
     content_sha256: str
     case_id_sha256: str
+    claim_shingles: frozenset[str]
+    evidence_shingles: frozenset[str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +157,109 @@ def _canonical_json(value: object) -> bytes:
 
 def _sha256(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def _similarity_shingles(text: str) -> frozenset[str]:
+    normalized = unicodedata.normalize("NFKC", text).casefold()
+    normalized = unicodedata.normalize("NFKC", normalized).replace("\u0307", "")
+    normalized = _NON_WORD_RE.sub(" ", normalized).strip()
+    if len(normalized) <= _SHINGLE_SIZE:
+        return frozenset({normalized})
+    return frozenset(
+        normalized[index : index + _SHINGLE_SIZE]
+        for index in range(len(normalized) - _SHINGLE_SIZE + 1)
+    )
+
+
+def _jaccard(left: frozenset[str], right: frozenset[str]) -> float:
+    return len(left & right) / len(left | right)
+
+
+@dataclass(slots=True)
+class _SimilarityBudget:
+    maximum: int
+    used: int = 0
+
+    def consume(self) -> None:
+        self.used += 1
+        if self.used > self.maximum:
+            raise EntailmentEvaluationError("near-duplicate comparison budget exceeded")
+
+
+def _is_near_duplicate(
+    left: _ValidatedPair,
+    right: _ValidatedPair,
+    *,
+    threshold: float,
+) -> bool:
+    return (
+        _jaccard(left.claim_shingles, right.claim_shingles) >= threshold
+        and _jaccard(left.evidence_shingles, right.evidence_shingles) >= threshold
+    )
+
+
+def _candidate_indexes(
+    shingles: frozenset[str],
+    index: dict[str, set[int]],
+) -> set[int]:
+    candidates: set[int] = set()
+    for shingle in shingles:
+        candidates.update(index.get(shingle, ()))
+    return candidates
+
+
+def _index_pair(
+    pair_index: int,
+    shingles: frozenset[str],
+    index: dict[str, set[int]],
+) -> None:
+    for shingle in shingles:
+        index.setdefault(shingle, set()).add(pair_index)
+
+
+def _reject_within_split_near_duplicates(
+    pairs: tuple[_ValidatedPair, ...],
+    *,
+    split_name: str,
+    threshold: float,
+    budget: _SimilarityBudget,
+) -> None:
+    claim_index: dict[str, set[int]] = {}
+    for pair_index, pair in enumerate(pairs):
+        for candidate_index in sorted(
+            _candidate_indexes(pair.claim_shingles, claim_index)
+        ):
+            budget.consume()
+            if _is_near_duplicate(pair, pairs[candidate_index], threshold=threshold):
+                raise EntailmentEvaluationError(
+                    f"{split_name} contains near-duplicate content"
+                )
+        _index_pair(pair_index, pair.claim_shingles, claim_index)
+
+
+def _reject_cross_split_near_duplicates(
+    calibration: tuple[_ValidatedPair, ...],
+    evaluation: tuple[_ValidatedPair, ...],
+    *,
+    threshold: float,
+    budget: _SimilarityBudget,
+) -> None:
+    claim_index: dict[str, set[int]] = {}
+    for pair_index, pair in enumerate(calibration):
+        _index_pair(pair_index, pair.claim_shingles, claim_index)
+    for pair in evaluation:
+        for candidate_index in sorted(
+            _candidate_indexes(pair.claim_shingles, claim_index)
+        ):
+            budget.consume()
+            if _is_near_duplicate(
+                pair,
+                calibration[candidate_index],
+                threshold=threshold,
+            ):
+                raise EntailmentEvaluationError(
+                    "calibration and evaluation near-duplicate content overlap"
+                )
 
 
 def _validate_split(
@@ -195,6 +323,8 @@ def _validate_split(
                 pair=pair,
                 content_sha256=content_sha256,
                 case_id_sha256=_sha256(pair.case_id.encode("utf-8")),
+                claim_shingles=_similarity_shingles(pair.claim),
+                evidence_shingles=_similarity_shingles(pair.evidence),
             )
         )
     if labels != {EntailmentLabel.SUPPORTED, EntailmentLabel.UNSUPPORTED}:
@@ -334,6 +464,25 @@ def evaluate_entailment_diagnostic(
         raise EntailmentEvaluationError("calibration and evaluation case_id overlap")
     if calibration_content & evaluation_content:
         raise EntailmentEvaluationError("calibration and evaluation content overlap")
+    similarity_budget = _SimilarityBudget(policy.max_near_duplicate_comparisons)
+    _reject_within_split_near_duplicates(
+        calibration_validated,
+        split_name="calibration split",
+        threshold=policy.near_duplicate_similarity_threshold,
+        budget=similarity_budget,
+    )
+    _reject_within_split_near_duplicates(
+        evaluation_validated,
+        split_name="evaluation split",
+        threshold=policy.near_duplicate_similarity_threshold,
+        budget=similarity_budget,
+    )
+    _reject_cross_split_near_duplicates(
+        calibration_validated,
+        evaluation_validated,
+        threshold=policy.near_duplicate_similarity_threshold,
+        budget=similarity_budget,
+    )
 
     calibration_scored = _score_split(
         calibration_validated,
@@ -362,6 +511,7 @@ def evaluate_entailment_diagnostic(
     policy_sha256 = _sha256(_canonical_json(asdict(policy)))
     report_document = {
         "schema_version": SCHEMA_VERSION,
+        "leakage_guard_version": LEAKAGE_GUARD_VERSION,
         "scorer_id": scorer_id,
         "threshold": threshold,
         "calibration": asdict(calibration_metrics),
@@ -371,9 +521,11 @@ def evaluate_entailment_diagnostic(
         "policy_sha256": policy_sha256,
         "meets_policy": not failure_reasons,
         "failure_reasons": failure_reasons,
+        "near_duplicate_comparisons": similarity_budget.used,
     }
     return EntailmentDiagnosticReport(
         schema_version=SCHEMA_VERSION,
+        leakage_guard_version=LEAKAGE_GUARD_VERSION,
         scorer_id=scorer_id,
         threshold=threshold,
         calibration=calibration_metrics,
@@ -384,4 +536,5 @@ def evaluate_entailment_diagnostic(
         report_sha256=_sha256(_canonical_json(report_document)),
         meets_policy=not failure_reasons,
         failure_reasons=tuple(failure_reasons),
+        near_duplicate_comparisons=similarity_budget.used,
     )

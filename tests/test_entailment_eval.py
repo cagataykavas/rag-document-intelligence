@@ -181,6 +181,134 @@ def test_calibration_and_holdout_content_overlap_fails_closed() -> None:
         )
 
 
+def test_unicode_and_formatting_near_duplicate_leakage_fails_before_scoring() -> None:
+    calibration = [
+        pair(
+            "c1",
+            EntailmentLabel.SUPPORTED,
+            claim="İdari erişim için güçlü kimlik doğrulama gerekir.",
+            evidence="Tüm idari erişimler, güçlü kimlik doğrulama gerektirir.",
+        ),
+        pair("c2", EntailmentLabel.UNSUPPORTED),
+    ]
+    evaluation = [
+        pair(
+            "e1",
+            EntailmentLabel.SUPPORTED,
+            claim="I\u0307DARI ERI\u0307ŞI\u0307M I\u0307ÇI\u0307N GÜÇLÜ KI\u0307MLI\u0307K DOĞRULAMA GEREKI\u0307R!",
+            evidence="Tüm idari erişimler güçlü kimlik doğrulama gerektirir",
+        ),
+        pair("e2", EntailmentLabel.UNSUPPORTED),
+    ]
+    scorer_called = False
+
+    def scorer(_claim: str, _evidence: str) -> float:
+        nonlocal scorer_called
+        scorer_called = True
+        return 0.5
+
+    with pytest.raises(
+        EntailmentEvaluationError, match="near-duplicate content overlap"
+    ):
+        evaluate_entailment_diagnostic(
+            calibration,
+            evaluation,
+            scorer,
+            scorer_id="scorer-v1",
+        )
+
+    assert not scorer_called
+
+
+def test_near_duplicate_guard_requires_both_claim_and_evidence_similarity() -> None:
+    calibration = [
+        pair(
+            "c1",
+            EntailmentLabel.SUPPORTED,
+            claim="Administrative access requires authentication.",
+            evidence="Administrative access requires a hardware security key.",
+        ),
+        pair("c2", EntailmentLabel.UNSUPPORTED),
+    ]
+    evaluation = [
+        pair(
+            "e1",
+            EntailmentLabel.SUPPORTED,
+            claim="Administrative access requires authentication!",
+            evidence="Administrative access is permitted with an emailed one-time code.",
+        ),
+        pair("e2", EntailmentLabel.UNSUPPORTED),
+    ]
+    scores = {
+        "Administrative access requires authentication.": 0.9,
+        "Claim c2": 0.1,
+        "Administrative access requires authentication!": 0.9,
+        "Claim e2": 0.1,
+    }
+
+    report = evaluate_entailment_diagnostic(
+        calibration,
+        evaluation,
+        scorer_for(scores),
+        scorer_id="scorer-v1",
+    )
+
+    assert report.meets_policy
+    assert report.near_duplicate_comparisons > 0
+    assert (
+        report.leakage_guard_version == "unicode-nfkc-casefold-tr-dot-char5-jaccard/v1"
+    )
+
+
+def test_within_split_near_duplicate_content_fails_closed() -> None:
+    calibration = [
+        pair(
+            "c1",
+            EntailmentLabel.SUPPORTED,
+            claim="The retention period is exactly ninety calendar days.",
+            evidence="Records remain available for exactly ninety calendar days.",
+        ),
+        pair(
+            "c2",
+            EntailmentLabel.UNSUPPORTED,
+            claim="The retention period is exactly ninety calendar days!",
+            evidence="Records remain available for exactly ninety calendar days!",
+        ),
+    ]
+    evaluation = [
+        pair("e1", EntailmentLabel.SUPPORTED),
+        pair("e2", EntailmentLabel.UNSUPPORTED),
+    ]
+
+    with pytest.raises(EntailmentEvaluationError, match="contains near-duplicate"):
+        evaluate_entailment_diagnostic(
+            calibration,
+            evaluation,
+            lambda _claim, _evidence: 0.5,
+            scorer_id="scorer-v1",
+        )
+
+
+def test_near_duplicate_comparison_budget_fails_closed() -> None:
+    calibration = [
+        pair("c1", EntailmentLabel.SUPPORTED),
+        pair("c2", EntailmentLabel.UNSUPPORTED),
+    ]
+    evaluation = [
+        pair("e1", EntailmentLabel.SUPPORTED),
+        pair("e2", EntailmentLabel.UNSUPPORTED),
+    ]
+
+    with pytest.raises(EntailmentEvaluationError, match="comparison budget"):
+        evaluate_entailment_diagnostic(
+            calibration,
+            evaluation,
+            lambda _claim, _evidence: 0.5,
+            scorer_id="scorer-v1",
+            policy=EntailmentPolicy(max_near_duplicate_comparisons=1),
+        )
+
+
 def test_calibration_and_holdout_case_id_overlap_fails_closed() -> None:
     calibration = [
         pair("shared", EntailmentLabel.SUPPORTED),
@@ -299,6 +427,10 @@ def test_scorer_failure_is_normalized_without_content_leakage() -> None:
         {"min_supported_recall": 1.1},
         {"max_pairs_per_split": 1},
         {"max_claim_utf8_bytes": 0},
+        {"near_duplicate_similarity_threshold": math.nan},
+        {"near_duplicate_similarity_threshold": 0.0},
+        {"near_duplicate_similarity_threshold": 1.1},
+        {"max_near_duplicate_comparisons": 0},
     ],
 )
 def test_policy_rejects_unsafe_configuration(kwargs) -> None:
