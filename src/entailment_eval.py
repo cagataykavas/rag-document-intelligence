@@ -9,14 +9,16 @@ from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 
-SCHEMA_VERSION = "entailment-diagnostic/v2"
+SCHEMA_VERSION = "entailment-diagnostic/v3"
 LEAKAGE_GUARD_VERSION = "unicode-nfkc-casefold-tr-dot-char5-jaccard/v1"
+SEMANTIC_LEAKAGE_GUARD_VERSION = "versioned-pairwise-semantic-similarity/v1"
 _CASE_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}")
 _SCORER_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}")
 _NON_WORD_RE = re.compile(r"[^\w]+", flags=re.UNICODE)
 _SHINGLE_SIZE = 5
 
 EntailmentScorer = Callable[[str, str], float]
+SemanticLeakageScorer = Callable[[str, str, str, str], float]
 
 
 class EntailmentEvaluationError(ValueError):
@@ -52,6 +54,8 @@ class EntailmentPolicy:
     max_split_utf8_bytes: int = 16 * 1024 * 1024
     near_duplicate_similarity_threshold: float = 0.9
     max_near_duplicate_comparisons: int = 1_000_000
+    semantic_duplicate_similarity_threshold: float = 0.9
+    max_semantic_duplicate_comparisons: int = 100_000
 
     def __post_init__(self) -> None:
         for name in ("min_supported_precision", "min_supported_recall"):
@@ -63,16 +67,18 @@ class EntailmentPolicy:
                 or not 0.0 <= float(value) <= 1.0
             ):
                 raise ValueError(f"{name} must be finite and between 0 and 1")
-        threshold = self.near_duplicate_similarity_threshold
-        if (
-            isinstance(threshold, bool)
-            or not isinstance(threshold, (int, float))
-            or not math.isfinite(threshold)
-            or not 0.0 < float(threshold) <= 1.0
+        for name in (
+            "near_duplicate_similarity_threshold",
+            "semantic_duplicate_similarity_threshold",
         ):
-            raise ValueError(
-                "near_duplicate_similarity_threshold must be finite and in (0, 1]"
-            )
+            threshold = getattr(self, name)
+            if (
+                isinstance(threshold, bool)
+                or not isinstance(threshold, (int, float))
+                or not math.isfinite(threshold)
+                or not 0.0 < float(threshold) <= 1.0
+            ):
+                raise ValueError(f"{name} must be finite and in (0, 1]")
         limits = {
             "max_pairs_per_split": (self.max_pairs_per_split, 2, 100_000),
             "max_claim_utf8_bytes": (self.max_claim_utf8_bytes, 1, 1_048_576),
@@ -88,6 +94,11 @@ class EntailmentPolicy:
             ),
             "max_near_duplicate_comparisons": (
                 self.max_near_duplicate_comparisons,
+                1,
+                50_000_000,
+            ),
+            "max_semantic_duplicate_comparisons": (
+                self.max_semantic_duplicate_comparisons,
                 1,
                 50_000_000,
             ),
@@ -125,6 +136,10 @@ class EntailmentDiagnosticReport:
     meets_policy: bool
     failure_reasons: tuple[str, ...]
     near_duplicate_comparisons: int
+    semantic_leakage_guard_version: str | None
+    semantic_scorer_id: str | None
+    semantic_model_revision_sha256: str | None
+    semantic_duplicate_comparisons: int
 
     def to_audit_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -143,6 +158,31 @@ class _ValidatedPair:
 class _ScoredPair:
     validated: _ValidatedPair
     score: float
+
+
+@dataclass(frozen=True, slots=True)
+class VersionedSemanticLeakageGuard:
+    """Bound provenance for an untrusted multilingual similarity scorer."""
+
+    scorer: SemanticLeakageScorer
+    scorer_id: str
+    model_revision_sha256: str
+
+    def __post_init__(self) -> None:
+        if not callable(self.scorer):
+            raise TypeError("semantic leakage scorer must be callable")
+        if (
+            not isinstance(self.scorer_id, str)
+            or _SCORER_ID_RE.fullmatch(self.scorer_id) is None
+        ):
+            raise ValueError("semantic scorer_id must contain 1-128 safe characters")
+        if (
+            not isinstance(self.model_revision_sha256, str)
+            or re.fullmatch(r"[0-9a-f]{64}", self.model_revision_sha256) is None
+        ):
+            raise ValueError(
+                "model_revision_sha256 must be canonical lowercase SHA-256"
+            )
 
 
 def _canonical_json(value: object) -> bytes:
@@ -259,6 +299,75 @@ def _reject_cross_split_near_duplicates(
             ):
                 raise EntailmentEvaluationError(
                     "calibration and evaluation near-duplicate content overlap"
+                )
+
+
+def _semantic_similarity(
+    left: _ValidatedPair,
+    right: _ValidatedPair,
+    guard: VersionedSemanticLeakageGuard,
+    *,
+    split_name: str,
+) -> float:
+    try:
+        score = guard.scorer(
+            left.pair.claim,
+            left.pair.evidence,
+            right.pair.claim,
+            right.pair.evidence,
+        )
+    except Exception as exc:  # noqa: BLE001 - scorer is an untrusted evaluation boundary
+        raise EntailmentEvaluationError(
+            f"{split_name} semantic leakage scorer failed"
+        ) from exc
+    if (
+        isinstance(score, bool)
+        or not isinstance(score, (int, float))
+        or not math.isfinite(score)
+        or not 0.0 <= float(score) <= 1.0
+    ):
+        raise EntailmentEvaluationError(
+            f"{split_name} semantic leakage scorer returned an invalid similarity"
+        )
+    return float(score)
+
+
+def _reject_semantic_duplicates(
+    calibration: tuple[_ValidatedPair, ...],
+    evaluation: tuple[_ValidatedPair, ...],
+    guard: VersionedSemanticLeakageGuard,
+    *,
+    threshold: float,
+    budget: _SimilarityBudget,
+) -> None:
+    for split_name, pairs in (
+        ("calibration split", calibration),
+        ("evaluation split", evaluation),
+    ):
+        for left_index, left in enumerate(pairs):
+            for right in pairs[left_index + 1 :]:
+                budget.consume()
+                if (
+                    _semantic_similarity(left, right, guard, split_name=split_name)
+                    >= threshold
+                ):
+                    raise EntailmentEvaluationError(
+                        f"{split_name} contains semantic duplicate content"
+                    )
+    for calibration_pair in calibration:
+        for evaluation_pair in evaluation:
+            budget.consume()
+            if (
+                _semantic_similarity(
+                    calibration_pair,
+                    evaluation_pair,
+                    guard,
+                    split_name="cross-split",
+                )
+                >= threshold
+            ):
+                raise EntailmentEvaluationError(
+                    "calibration and evaluation semantic duplicate content overlap"
                 )
 
 
@@ -434,6 +543,7 @@ def evaluate_entailment_diagnostic(
     *,
     scorer_id: str,
     policy: EntailmentPolicy = EntailmentPolicy(),
+    semantic_leakage_guard: VersionedSemanticLeakageGuard | None = None,
 ) -> EntailmentDiagnosticReport:
     """Calibrate on one labeled split and evaluate a disjoint holdout split.
 
@@ -446,6 +556,12 @@ def evaluate_entailment_diagnostic(
         raise ValueError("scorer_id must contain 1-128 safe characters")
     if not isinstance(policy, EntailmentPolicy):
         raise TypeError("policy must be an EntailmentPolicy")
+    if semantic_leakage_guard is not None and not isinstance(
+        semantic_leakage_guard, VersionedSemanticLeakageGuard
+    ):
+        raise TypeError(
+            "semantic_leakage_guard must be a VersionedSemanticLeakageGuard"
+        )
     calibration_validated = _validate_split(
         calibration_pairs,
         split_name="calibration split",
@@ -483,6 +599,17 @@ def evaluate_entailment_diagnostic(
         threshold=policy.near_duplicate_similarity_threshold,
         budget=similarity_budget,
     )
+    semantic_similarity_budget = _SimilarityBudget(
+        policy.max_semantic_duplicate_comparisons
+    )
+    if semantic_leakage_guard is not None:
+        _reject_semantic_duplicates(
+            calibration_validated,
+            evaluation_validated,
+            semantic_leakage_guard,
+            threshold=policy.semantic_duplicate_similarity_threshold,
+            budget=semantic_similarity_budget,
+        )
 
     calibration_scored = _score_split(
         calibration_validated,
@@ -509,6 +636,17 @@ def evaluate_entailment_diagnostic(
     calibration_sha256 = _scored_split_sha256(calibration_scored)
     evaluation_sha256 = _scored_split_sha256(evaluation_scored)
     policy_sha256 = _sha256(_canonical_json(asdict(policy)))
+    semantic_guard_version = (
+        SEMANTIC_LEAKAGE_GUARD_VERSION if semantic_leakage_guard is not None else None
+    )
+    semantic_scorer_id = (
+        semantic_leakage_guard.scorer_id if semantic_leakage_guard is not None else None
+    )
+    semantic_model_revision_sha256 = (
+        semantic_leakage_guard.model_revision_sha256
+        if semantic_leakage_guard is not None
+        else None
+    )
     report_document = {
         "schema_version": SCHEMA_VERSION,
         "leakage_guard_version": LEAKAGE_GUARD_VERSION,
@@ -522,6 +660,10 @@ def evaluate_entailment_diagnostic(
         "meets_policy": not failure_reasons,
         "failure_reasons": failure_reasons,
         "near_duplicate_comparisons": similarity_budget.used,
+        "semantic_leakage_guard_version": semantic_guard_version,
+        "semantic_scorer_id": semantic_scorer_id,
+        "semantic_model_revision_sha256": semantic_model_revision_sha256,
+        "semantic_duplicate_comparisons": semantic_similarity_budget.used,
     }
     return EntailmentDiagnosticReport(
         schema_version=SCHEMA_VERSION,
@@ -537,4 +679,8 @@ def evaluate_entailment_diagnostic(
         meets_policy=not failure_reasons,
         failure_reasons=tuple(failure_reasons),
         near_duplicate_comparisons=similarity_budget.used,
+        semantic_leakage_guard_version=semantic_guard_version,
+        semantic_scorer_id=semantic_scorer_id,
+        semantic_model_revision_sha256=semantic_model_revision_sha256,
+        semantic_duplicate_comparisons=semantic_similarity_budget.used,
     )

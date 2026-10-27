@@ -9,6 +9,7 @@ from src.entailment_eval import (
     EntailmentLabel,
     EntailmentPair,
     EntailmentPolicy,
+    VersionedSemanticLeakageGuard,
     evaluate_entailment_diagnostic,
 )
 
@@ -431,6 +432,10 @@ def test_scorer_failure_is_normalized_without_content_leakage() -> None:
         {"near_duplicate_similarity_threshold": 0.0},
         {"near_duplicate_similarity_threshold": 1.1},
         {"max_near_duplicate_comparisons": 0},
+        {"semantic_duplicate_similarity_threshold": math.nan},
+        {"semantic_duplicate_similarity_threshold": 0.0},
+        {"semantic_duplicate_similarity_threshold": 1.1},
+        {"max_semantic_duplicate_comparisons": 0},
     ],
 )
 def test_policy_rejects_unsafe_configuration(kwargs) -> None:
@@ -514,3 +519,202 @@ def test_audit_report_contains_commitments_not_raw_claims_or_evidence() -> None:
             scorer_id="privacy-check-v1",
         ).report_sha256
     )
+
+
+def test_versioned_semantic_guard_rejects_turkish_paraphrase_before_scoring() -> None:
+    calibration = [
+        pair(
+            "c1",
+            EntailmentLabel.SUPPORTED,
+            claim="Yönetici oturumlarında donanım anahtarı zorunludur.",
+            evidence="İdari erişim için fiziksel bir güvenlik anahtarı kullanılmalıdır.",
+        ),
+        pair("c2", EntailmentLabel.UNSUPPORTED),
+    ]
+    evaluation = [
+        pair(
+            "e1",
+            EntailmentLabel.SUPPORTED,
+            claim="Admin girişleri yalnızca fiziksel ikinci faktörle açılır.",
+            evidence="Yönetim yetkisi, cihaz tabanlı kimlik doğrulaması gerektirir.",
+        ),
+        pair("e2", EntailmentLabel.UNSUPPORTED),
+    ]
+    main_scorer_called = False
+
+    def main_scorer(_claim: str, _evidence: str) -> float:
+        nonlocal main_scorer_called
+        main_scorer_called = True
+        return 0.5
+
+    def semantic_scorer(
+        left_claim: str, _left_evidence: str, right_claim: str, _right_evidence: str
+    ) -> float:
+        target = {left_claim, right_claim}
+        if target == {calibration[0].claim, evaluation[0].claim}:
+            return 0.97
+        return 0.05
+
+    guard = VersionedSemanticLeakageGuard(
+        scorer=semantic_scorer,
+        scorer_id="multilingual-nli:turkish-v1",
+        model_revision_sha256="b" * 64,
+    )
+
+    with pytest.raises(
+        EntailmentEvaluationError, match="semantic duplicate content overlap"
+    ):
+        evaluate_entailment_diagnostic(
+            calibration,
+            evaluation,
+            main_scorer,
+            scorer_id="entailment-v1",
+            semantic_leakage_guard=guard,
+        )
+
+    assert not main_scorer_called
+
+
+def test_semantic_guard_provenance_and_work_are_bound_to_report() -> None:
+    calibration = [
+        pair("c1", EntailmentLabel.SUPPORTED),
+        pair("c2", EntailmentLabel.UNSUPPORTED),
+    ]
+    evaluation = [
+        pair("e1", EntailmentLabel.SUPPORTED),
+        pair("e2", EntailmentLabel.UNSUPPORTED),
+    ]
+    guard = VersionedSemanticLeakageGuard(
+        scorer=lambda *_texts: 0.1,
+        scorer_id="multilingual-nli:v3",
+        model_revision_sha256="c" * 64,
+    )
+
+    report = evaluate_entailment_diagnostic(
+        calibration,
+        evaluation,
+        lambda claim, _evidence: 0.9 if claim.endswith("1") else 0.1,
+        scorer_id="entailment-v1",
+        semantic_leakage_guard=guard,
+    )
+
+    assert report.schema_version == "entailment-diagnostic/v3"
+    assert (
+        report.semantic_leakage_guard_version
+        == "versioned-pairwise-semantic-similarity/v1"
+    )
+    assert report.semantic_scorer_id == "multilingual-nli:v3"
+    assert report.semantic_model_revision_sha256 == "c" * 64
+    assert report.semantic_duplicate_comparisons == 6
+    assert "Claim c1" not in repr(report.to_audit_dict())
+
+
+def test_semantic_comparison_budget_fails_before_entailment_scorer() -> None:
+    calibration = [
+        pair("c1", EntailmentLabel.SUPPORTED),
+        pair("c2", EntailmentLabel.UNSUPPORTED),
+    ]
+    evaluation = [
+        pair("e1", EntailmentLabel.SUPPORTED),
+        pair("e2", EntailmentLabel.UNSUPPORTED),
+    ]
+    main_scorer_called = False
+
+    def main_scorer(_claim: str, _evidence: str) -> float:
+        nonlocal main_scorer_called
+        main_scorer_called = True
+        return 0.5
+
+    with pytest.raises(EntailmentEvaluationError, match="comparison budget"):
+        evaluate_entailment_diagnostic(
+            calibration,
+            evaluation,
+            main_scorer,
+            scorer_id="entailment-v1",
+            policy=EntailmentPolicy(max_semantic_duplicate_comparisons=5),
+            semantic_leakage_guard=VersionedSemanticLeakageGuard(
+                scorer=lambda *_texts: 0.1,
+                scorer_id="multilingual-nli:v3",
+                model_revision_sha256="c" * 64,
+            ),
+        )
+
+    assert not main_scorer_called
+
+
+@pytest.mark.parametrize("invalid_similarity", [True, -0.1, 1.1, math.nan, "0.5"])
+def test_invalid_semantic_similarity_fails_closed(invalid_similarity: object) -> None:
+    calibration = [
+        pair("c1", EntailmentLabel.SUPPORTED),
+        pair("c2", EntailmentLabel.UNSUPPORTED),
+    ]
+    evaluation = [
+        pair("e1", EntailmentLabel.SUPPORTED),
+        pair("e2", EntailmentLabel.UNSUPPORTED),
+    ]
+
+    with pytest.raises(EntailmentEvaluationError, match="invalid similarity"):
+        evaluate_entailment_diagnostic(
+            calibration,
+            evaluation,
+            lambda _claim, _evidence: 0.5,
+            scorer_id="entailment-v1",
+            semantic_leakage_guard=VersionedSemanticLeakageGuard(
+                scorer=lambda *_texts: invalid_similarity,  # type: ignore[arg-type]
+                scorer_id="multilingual-nli:v3",
+                model_revision_sha256="c" * 64,
+            ),
+        )
+
+
+def test_semantic_scorer_failure_is_normalized_without_content_leakage() -> None:
+    secret = "private provider diagnostic with customer text"
+
+    def failing_semantic_scorer(*_texts: str) -> float:
+        raise RuntimeError(secret)
+
+    with pytest.raises(
+        EntailmentEvaluationError, match="semantic leakage scorer failed"
+    ) as caught:
+        evaluate_entailment_diagnostic(
+            [
+                pair("c1", EntailmentLabel.SUPPORTED),
+                pair("c2", EntailmentLabel.UNSUPPORTED),
+            ],
+            [
+                pair("e1", EntailmentLabel.SUPPORTED),
+                pair("e2", EntailmentLabel.UNSUPPORTED),
+            ],
+            lambda _claim, _evidence: 0.5,
+            scorer_id="entailment-v1",
+            semantic_leakage_guard=VersionedSemanticLeakageGuard(
+                scorer=failing_semantic_scorer,
+                scorer_id="multilingual-nli:v3",
+                model_revision_sha256="c" * 64,
+            ),
+        )
+
+    assert secret not in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"scorer": None, "scorer_id": "nli-v1", "model_revision_sha256": "c" * 64},
+        {
+            "scorer": lambda *_: 0.1,
+            "scorer_id": "bad id",
+            "model_revision_sha256": "c" * 64,
+        },
+        {
+            "scorer": lambda *_: 0.1,
+            "scorer_id": "nli-v1",
+            "model_revision_sha256": "latest",
+        },
+    ],
+)
+def test_semantic_guard_rejects_unversioned_configuration(
+    kwargs: dict[str, object],
+) -> None:
+    with pytest.raises((TypeError, ValueError)):
+        VersionedSemanticLeakageGuard(**kwargs)  # type: ignore[arg-type]
