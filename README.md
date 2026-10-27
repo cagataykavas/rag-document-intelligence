@@ -388,7 +388,8 @@ admission. It selects a risk-aware threshold only from a calibration split, then
 that threshold for a disjoint holdout split. Duplicate IDs, exact contents, and versioned
 Unicode-normalized character-shingle near-duplicates fail closed within or across splits.
 The bounded comparison policy prevents repetitive suites from causing unbounded work before
-the untrusted scorer is invoked.
+the untrusted scorer is invoked. An optional versioned semantic-leakage adapter performs a complete,
+budgeted paraphrase scan and binds its model-artifact SHA-256 and work count to the audit report.
 
 The content-minimizing report exposes confusion matrices, supported precision/recall,
 unsupported recall, balanced accuracy, explicit policy failures and SHA-256 commitments
@@ -515,7 +516,7 @@ GitHub Actions runs without an external LLM key and checks:
 - page-bounded PDF chunking and content-bound page locators;
 - prompt-injection quarantine behavior;
 - zero/one/few-shot evaluation harness;
-- disjoint-split entailment calibration, bounded near-duplicate leakage checks, scorer failures, and privacy-reduced reports;
+- disjoint-split entailment calibration, bounded lexical/semantic leakage checks, scorer failures, and privacy-reduced reports;
 - requirement-conflict analysis;
 - REST API behavior;
 - Docker Compose validation;
@@ -526,7 +527,7 @@ GitHub Actions runs without an external LLM key and checks:
 - dense embedding retriever + ANN index;
 - BM25 + dense reciprocal-rank fusion;
 - cross-encoder reranking;
-- multilingual entailment scorer adapter with drift monitoring;
+- language/domain/length drift slices for calibrated entailment reports;
 - page-native PDF provenance;
 - PostgreSQL + pgvector / OpenSearch persistence;
 - Bedrock, Vertex AI, Azure Foundry, and local-vLLM adapters;

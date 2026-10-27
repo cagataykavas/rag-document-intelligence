@@ -43,6 +43,43 @@ report = evaluate_entailment_diagnostic(
 )
 ```
 
+## Versioned semantic leakage adapter
+
+The surface guard cannot identify paraphrases that share little character-level text. For sealed
+offline suites, callers can additionally provide a `VersionedSemanticLeakageGuard` backed by a
+reviewed multilingual NLI or semantic-similarity model:
+
+```python
+from src.entailment_eval import VersionedSemanticLeakageGuard
+
+semantic_guard = VersionedSemanticLeakageGuard(
+    scorer=compare_claim_evidence_pairs,
+    scorer_id="multilingual-nli:turkish-v3",
+    model_revision_sha256=model_artifact_sha256,
+)
+
+report = evaluate_entailment_diagnostic(
+    calibration,
+    evaluation_pairs,
+    scorer=my_cross_encoder,
+    scorer_id="multilingual-nli-2026-10",
+    semantic_leakage_guard=semantic_guard,
+)
+```
+
+The adapter compares every pair within calibration, within holdout and across the two splits after
+the cheaper exact and character-shingle guards pass. The policy's
+`max_semantic_duplicate_comparisons` is a hard work budget: if a complete scan cannot finish inside
+that budget, evaluation fails before the entailment scorer runs. This deliberately favors an
+auditable complete check over a silent partial scan. The default budget of 100,000 comparisons is
+appropriate only for bounded offline suites; larger corpora need a reviewed semantic candidate
+index and a separate recall benchmark.
+
+Adapter exceptions and invalid, boolean, non-finite or out-of-range similarities are normalized at
+the untrusted boundary without copying provider diagnostics or evaluated text. The v3 report binds
+the guard version, scorer ID, immutable model-artifact SHA-256 and actual comparison count. It does
+not store raw pair text.
+
 ## Leakage-safe calibration
 
 The supported threshold is selected only from the calibration split. Among thresholds that satisfy
@@ -77,7 +114,8 @@ The report contains:
 - explicit policy-failure reason codes;
 - SHA-256 commitments to case identity, exact claim/evidence contents, labels and scores;
 - policy and final report commitments;
-- the versioned near-duplicate guard and number of bounded similarity comparisons.
+- the versioned near-duplicate guard and number of bounded similarity comparisons;
+- optional semantic-leakage guard provenance and completed comparison count.
 
 Raw claim and evidence text are intentionally omitted from the audit report. These hashes are
 integrity commitments, not anonymization; predictable text may still be vulnerable to guessing.
@@ -90,8 +128,9 @@ the report as one reviewed release input, but deterministic admission remains th
 boundary.
 
 The harness does not provide a pretrained entailment model, establish source authority or prove
-factual truth. Character-shingle similarity catches surface-near copies, not semantic paraphrases;
-it can also reject legitimately repeated boilerplate when both claim and evidence are very similar.
-Performance depends on representative labels and may drift by language, domain, claim granularity
-and evidence length. Deployments should version the scorer ID, keep a sealed holdout set, review
-class balance and recalibrate after any scorer or data-distribution change.
+factual truth. The optional semantic guard trusts the supplied adapter and artifact commitment; a
+SHA-256 revision proves byte identity, not model quality. Both lexical and semantic thresholds can
+reject legitimately related but non-duplicate examples. Performance depends on representative
+labels and may drift by language, domain, claim granularity and evidence length. Deployments should
+keep a sealed holdout set, review class balance and recalibrate after any scorer or data-distribution
+change. The next increment should report these drift slices explicitly without exposing raw text.
