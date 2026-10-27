@@ -390,6 +390,9 @@ Unicode-normalized character-shingle near-duplicates fail closed within or acros
 The bounded comparison policy prevents repetitive suites from causing unbounded work before
 the untrusted scorer is invoked. An optional versioned semantic-leakage adapter performs a complete,
 budgeted paraphrase scan and binds its model-artifact SHA-256 and work count to the audit report.
+Optional language, document-domain and UTF-8 length drift slices compare calibration and holdout
+metrics only after both total-sample and per-label floors are met. Below-floor slices expose counts
+without unstable metrics; hashed case assignments and the slice policy are bound to the v4 report.
 
 The content-minimizing report exposes confusion matrices, supported precision/recall,
 unsupported recall, balanced accuracy, explicit policy failures and SHA-256 commitments
@@ -527,7 +530,7 @@ GitHub Actions runs without an external LLM key and checks:
 - dense embedding retriever + ANN index;
 - BM25 + dense reciprocal-rank fusion;
 - cross-encoder reranking;
-- language/domain/length drift slices for calibrated entailment reports;
+- versioned per-slice drift baselines with uncertainty bounds and regression thresholds;
 - page-native PDF provenance;
 - PostgreSQL + pgvector / OpenSearch persistence;
 - Bedrock, Vertex AI, Azure Foundry, and local-vLLM adapters;

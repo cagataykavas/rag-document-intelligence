@@ -5,10 +5,12 @@ import math
 import pytest
 
 from src.entailment_eval import (
+    DriftSlicePolicy,
     EntailmentEvaluationError,
     EntailmentLabel,
     EntailmentPair,
     EntailmentPolicy,
+    EntailmentSliceMetadata,
     VersionedSemanticLeakageGuard,
     evaluate_entailment_diagnostic,
 )
@@ -598,7 +600,7 @@ def test_semantic_guard_provenance_and_work_are_bound_to_report() -> None:
         semantic_leakage_guard=guard,
     )
 
-    assert report.schema_version == "entailment-diagnostic/v3"
+    assert report.schema_version == "entailment-diagnostic/v4"
     assert (
         report.semantic_leakage_guard_version
         == "versioned-pairwise-semantic-similarity/v1"
@@ -718,3 +720,302 @@ def test_semantic_guard_rejects_unversioned_configuration(
 ) -> None:
     with pytest.raises((TypeError, ValueError)):
         VersionedSemanticLeakageGuard(**kwargs)  # type: ignore[arg-type]
+
+
+def _slice_metadata(*case_ids: str) -> dict[str, EntailmentSliceMetadata]:
+    return {
+        case_id: EntailmentSliceMetadata(language="tr", document_domain="finance")
+        for case_id in case_ids
+    }
+
+
+def test_privacy_reduced_drift_slices_report_metric_deltas_above_floor() -> None:
+    calibration = [
+        pair("c1", EntailmentLabel.SUPPORTED),
+        pair("c2", EntailmentLabel.SUPPORTED),
+        pair("c3", EntailmentLabel.UNSUPPORTED),
+        pair("c4", EntailmentLabel.UNSUPPORTED),
+    ]
+    evaluation = [
+        pair("e1", EntailmentLabel.SUPPORTED),
+        pair("e2", EntailmentLabel.SUPPORTED),
+        pair("e3", EntailmentLabel.UNSUPPORTED),
+        pair("e4", EntailmentLabel.UNSUPPORTED),
+    ]
+    scores = {
+        "Claim c1": 0.9,
+        "Claim c2": 0.8,
+        "Claim c3": 0.2,
+        "Claim c4": 0.1,
+        "Claim e1": 0.9,
+        "Claim e2": 0.3,
+        "Claim e3": 0.85,
+        "Claim e4": 0.1,
+    }
+
+    report = evaluate_entailment_diagnostic(
+        calibration,
+        evaluation,
+        scorer_for(scores),
+        scorer_id="drift-slice-v1",
+        drift_slice_metadata=_slice_metadata(
+            "c1", "c2", "c3", "c4", "e1", "e2", "e3", "e4"
+        ),
+        drift_slice_policy=DriftSlicePolicy(
+            min_pairs_per_split=4,
+            min_pairs_per_label_per_split=1,
+        ),
+    )
+
+    assert report.schema_version == "entailment-diagnostic/v4"
+    assert report.drift_slice_version == "privacy-reduced-language-domain-length/v1"
+    assert len(report.drift_slice_policy_sha256 or "") == 64
+    assert len(report.slice_assignment_sha256 or "") == 64
+    assert [item.dimension for item in report.drift_slices] == [
+        "language",
+        "document_domain",
+        "claim_length_utf8",
+        "evidence_length_utf8",
+    ]
+    language_slice = report.drift_slices[0]
+    assert language_slice.value == "tr"
+    assert language_slice.metrics_reported
+    assert language_slice.calibration is not None
+    assert language_slice.evaluation is not None
+    assert language_slice.calibration.balanced_accuracy == 1.0
+    assert language_slice.evaluation.balanced_accuracy == 0.5
+    assert language_slice.balanced_accuracy_delta == -0.5
+    assert "Claim c1" not in repr(report.to_audit_dict())
+
+
+def test_slice_metrics_are_suppressed_below_sample_floor() -> None:
+    calibration = [
+        pair("c1", EntailmentLabel.SUPPORTED),
+        pair("c2", EntailmentLabel.SUPPORTED),
+        pair("c3", EntailmentLabel.UNSUPPORTED),
+        pair("c4", EntailmentLabel.UNSUPPORTED),
+    ]
+    evaluation = [
+        pair("e1", EntailmentLabel.SUPPORTED),
+        pair("e2", EntailmentLabel.SUPPORTED),
+        pair("e3", EntailmentLabel.UNSUPPORTED),
+        pair("e4", EntailmentLabel.UNSUPPORTED),
+    ]
+    metadata = {
+        case_id: EntailmentSliceMetadata(
+            language="tr" if case_id[-1] in {"1", "3"} else "en",
+            document_domain="finance",
+        )
+        for case_id in ("c1", "c2", "c3", "c4", "e1", "e2", "e3", "e4")
+    }
+
+    report = evaluate_entailment_diagnostic(
+        calibration,
+        evaluation,
+        lambda claim, _evidence: 0.9 if claim[-1] in {"1", "2"} else 0.1,
+        scorer_id="drift-slice-v1",
+        drift_slice_metadata=metadata,
+        drift_slice_policy=DriftSlicePolicy(
+            min_pairs_per_split=4,
+            min_pairs_per_label_per_split=1,
+        ),
+    )
+
+    language_slices = [
+        item for item in report.drift_slices if item.dimension == "language"
+    ]
+    assert {item.value for item in language_slices} == {"en", "tr"}
+    assert all(item.calibration_pairs == 2 for item in language_slices)
+    assert all(item.evaluation_pairs == 2 for item in language_slices)
+    assert all(not item.metrics_reported for item in language_slices)
+    assert all(item.calibration is None for item in language_slices)
+    assert all(item.balanced_accuracy_delta is None for item in language_slices)
+
+
+def test_slice_label_floor_suppresses_single_label_metrics() -> None:
+    calibration = [
+        pair("c1", EntailmentLabel.SUPPORTED),
+        pair("c2", EntailmentLabel.SUPPORTED),
+        pair("c3", EntailmentLabel.UNSUPPORTED),
+        pair("c4", EntailmentLabel.UNSUPPORTED),
+    ]
+    evaluation = [
+        pair("e1", EntailmentLabel.SUPPORTED),
+        pair("e2", EntailmentLabel.SUPPORTED),
+        pair("e3", EntailmentLabel.UNSUPPORTED),
+        pair("e4", EntailmentLabel.UNSUPPORTED),
+    ]
+    metadata = {
+        case_id: EntailmentSliceMetadata(
+            language="tr" if case_id[-1] in {"1", "2"} else "en",
+            document_domain="finance",
+        )
+        for case_id in ("c1", "c2", "c3", "c4", "e1", "e2", "e3", "e4")
+    }
+
+    report = evaluate_entailment_diagnostic(
+        calibration,
+        evaluation,
+        lambda claim, _evidence: 0.9 if claim[-1] in {"1", "2"} else 0.1,
+        scorer_id="drift-slice-v1",
+        drift_slice_metadata=metadata,
+        drift_slice_policy=DriftSlicePolicy(
+            min_pairs_per_split=2,
+            min_pairs_per_label_per_split=1,
+        ),
+    )
+
+    language_slices = [
+        item for item in report.drift_slices if item.dimension == "language"
+    ]
+    assert all(not item.metrics_reported for item in language_slices)
+
+
+def test_drift_slice_metadata_must_exactly_cover_both_splits_before_scoring() -> None:
+    scorer_called = False
+
+    def scorer(_claim: str, _evidence: str) -> float:
+        nonlocal scorer_called
+        scorer_called = True
+        return 0.5
+
+    with pytest.raises(EntailmentEvaluationError, match="exactly cover"):
+        evaluate_entailment_diagnostic(
+            [
+                pair("c1", EntailmentLabel.SUPPORTED),
+                pair("c2", EntailmentLabel.UNSUPPORTED),
+            ],
+            [
+                pair("e1", EntailmentLabel.SUPPORTED),
+                pair("e2", EntailmentLabel.UNSUPPORTED),
+            ],
+            scorer,
+            scorer_id="drift-slice-v1",
+            drift_slice_metadata=_slice_metadata("c1", "c2", "e1"),
+            drift_slice_policy=DriftSlicePolicy(
+                min_pairs_per_split=2,
+                min_pairs_per_label_per_split=1,
+            ),
+        )
+
+    assert not scorer_called
+
+
+def test_drift_slice_category_limit_fails_before_scoring() -> None:
+    scorer_called = False
+
+    def scorer(_claim: str, _evidence: str) -> float:
+        nonlocal scorer_called
+        scorer_called = True
+        return 0.5
+
+    metadata = {
+        "c1": EntailmentSliceMetadata(language="tr", document_domain="finance"),
+        "c2": EntailmentSliceMetadata(language="en", document_domain="finance"),
+        "e1": EntailmentSliceMetadata(language="tr", document_domain="finance"),
+        "e2": EntailmentSliceMetadata(language="en", document_domain="finance"),
+    }
+    with pytest.raises(EntailmentEvaluationError, match="language.*category limit"):
+        evaluate_entailment_diagnostic(
+            [
+                pair("c1", EntailmentLabel.SUPPORTED),
+                pair("c2", EntailmentLabel.UNSUPPORTED),
+            ],
+            [
+                pair("e1", EntailmentLabel.SUPPORTED),
+                pair("e2", EntailmentLabel.UNSUPPORTED),
+            ],
+            scorer,
+            scorer_id="drift-slice-v1",
+            drift_slice_metadata=metadata,
+            drift_slice_policy=DriftSlicePolicy(
+                min_pairs_per_split=2,
+                min_pairs_per_label_per_split=1,
+                max_values_per_dimension=1,
+            ),
+        )
+
+    assert not scorer_called
+
+
+def test_slice_assignment_and_policy_are_bound_to_report_digest() -> None:
+    calibration = [
+        pair("c1", EntailmentLabel.SUPPORTED),
+        pair("c2", EntailmentLabel.UNSUPPORTED),
+    ]
+    evaluation = [
+        pair("e1", EntailmentLabel.SUPPORTED),
+        pair("e2", EntailmentLabel.UNSUPPORTED),
+    ]
+    base_metadata = _slice_metadata("c1", "c2", "e1", "e2")
+    changed_metadata = dict(base_metadata)
+    changed_metadata["e1"] = EntailmentSliceMetadata(
+        language="en", document_domain="finance"
+    )
+
+    def evaluate(metadata, policy):
+        return evaluate_entailment_diagnostic(
+            calibration,
+            evaluation,
+            lambda claim, _evidence: 0.9 if claim.endswith("1") else 0.1,
+            scorer_id="drift-slice-v1",
+            drift_slice_metadata=metadata,
+            drift_slice_policy=policy,
+        )
+
+    first = evaluate(
+        base_metadata,
+        DriftSlicePolicy(
+            min_pairs_per_split=2,
+            min_pairs_per_label_per_split=1,
+        ),
+    )
+    reassigned = evaluate(
+        changed_metadata,
+        DriftSlicePolicy(
+            min_pairs_per_split=2,
+            min_pairs_per_label_per_split=1,
+        ),
+    )
+    rebucketed = evaluate(
+        base_metadata,
+        DriftSlicePolicy(
+            min_pairs_per_split=2,
+            min_pairs_per_label_per_split=1,
+            claim_length_utf8_boundaries=(8, 32),
+        ),
+    )
+
+    assert first.slice_assignment_sha256 != reassigned.slice_assignment_sha256
+    assert first.report_sha256 != reassigned.report_sha256
+    assert first.drift_slice_policy_sha256 != rebucketed.drift_slice_policy_sha256
+    assert first.report_sha256 != rebucketed.report_sha256
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"min_pairs_per_split": True},
+        {"min_pairs_per_split": 2, "min_pairs_per_label_per_split": 2},
+        {"claim_length_utf8_boundaries": ()},
+        {"claim_length_utf8_boundaries": (64, 32)},
+        {"evidence_length_utf8_boundaries": (0,)},
+        {"max_values_per_dimension": 0},
+    ],
+)
+def test_drift_slice_policy_rejects_unsafe_configuration(kwargs) -> None:
+    with pytest.raises(ValueError):
+        DriftSlicePolicy(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"language": "", "document_domain": "finance"},
+        {"language": "tr", "document_domain": "customer notes"},
+        {"language": "tr", "document_domain": "x" * 33},
+    ],
+)
+def test_drift_slice_metadata_rejects_unsafe_categories(metadata) -> None:
+    with pytest.raises(ValueError):
+        EntailmentSliceMetadata(**metadata)

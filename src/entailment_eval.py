@@ -5,15 +5,17 @@ import json
 import math
 import re
 import unicodedata
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 
-SCHEMA_VERSION = "entailment-diagnostic/v3"
+SCHEMA_VERSION = "entailment-diagnostic/v4"
 LEAKAGE_GUARD_VERSION = "unicode-nfkc-casefold-tr-dot-char5-jaccard/v1"
 SEMANTIC_LEAKAGE_GUARD_VERSION = "versioned-pairwise-semantic-similarity/v1"
+DRIFT_SLICE_VERSION = "privacy-reduced-language-domain-length/v1"
 _CASE_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}")
 _SCORER_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}")
+_SLICE_VALUE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,31}")
 _NON_WORD_RE = re.compile(r"[^\w]+", flags=re.UNICODE)
 _SHINGLE_SIZE = 5
 
@@ -42,6 +44,69 @@ class EntailmentPair:
     claim: str
     evidence: str
     label: EntailmentLabel
+
+
+@dataclass(frozen=True, slots=True)
+class EntailmentSliceMetadata:
+    """Low-cardinality, non-sensitive categories used for drift slicing."""
+
+    language: str
+    document_domain: str
+
+    def __post_init__(self) -> None:
+        for name in ("language", "document_domain"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or _SLICE_VALUE_RE.fullmatch(value) is None:
+                raise ValueError(f"{name} must contain 1-32 safe characters")
+
+
+@dataclass(frozen=True, slots=True)
+class DriftSlicePolicy:
+    """Privacy and statistical floors for optional drift diagnostics."""
+
+    min_pairs_per_split: int = 20
+    min_pairs_per_label_per_split: int = 5
+    claim_length_utf8_boundaries: tuple[int, ...] = (64, 256)
+    evidence_length_utf8_boundaries: tuple[int, ...] = (256, 1_024)
+    max_values_per_dimension: int = 32
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.min_pairs_per_split) is not int
+            or not 2 <= self.min_pairs_per_split <= 100_000
+        ):
+            raise ValueError("min_pairs_per_split must be an integer in [2, 100000]")
+        if (
+            type(self.min_pairs_per_label_per_split) is not int
+            or not 1 <= self.min_pairs_per_label_per_split <= 50_000
+        ):
+            raise ValueError(
+                "min_pairs_per_label_per_split must be an integer in [1, 50000]"
+            )
+        if 2 * self.min_pairs_per_label_per_split > self.min_pairs_per_split:
+            raise ValueError("min_pairs_per_split must cover both label floors")
+        if (
+            type(self.max_values_per_dimension) is not int
+            or not 1 <= self.max_values_per_dimension <= 128
+        ):
+            raise ValueError("max_values_per_dimension must be an integer in [1, 128]")
+        for name in (
+            "claim_length_utf8_boundaries",
+            "evidence_length_utf8_boundaries",
+        ):
+            boundaries = getattr(self, name)
+            if (
+                not isinstance(boundaries, tuple)
+                or not 1 <= len(boundaries) <= 16
+                or any(
+                    type(value) is not int or not 1 <= value <= 4_194_304
+                    for value in boundaries
+                )
+                or tuple(sorted(set(boundaries))) != boundaries
+            ):
+                raise ValueError(
+                    f"{name} must contain 1-16 strictly increasing positive byte limits"
+                )
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +187,21 @@ class EntailmentMetrics:
 
 
 @dataclass(frozen=True, slots=True)
+class EntailmentDriftSlice:
+    dimension: str
+    value: str
+    calibration_pairs: int
+    evaluation_pairs: int
+    metrics_reported: bool
+    calibration: EntailmentMetrics | None
+    evaluation: EntailmentMetrics | None
+    supported_precision_delta: float | None
+    supported_recall_delta: float | None
+    unsupported_recall_delta: float | None
+    balanced_accuracy_delta: float | None
+
+
+@dataclass(frozen=True, slots=True)
 class EntailmentDiagnosticReport:
     schema_version: str
     leakage_guard_version: str
@@ -140,6 +220,10 @@ class EntailmentDiagnosticReport:
     semantic_scorer_id: str | None
     semantic_model_revision_sha256: str | None
     semantic_duplicate_comparisons: int
+    drift_slice_version: str | None
+    drift_slice_policy_sha256: str | None
+    slice_assignment_sha256: str | None
+    drift_slices: tuple[EntailmentDriftSlice, ...]
 
     def to_audit_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -498,6 +582,197 @@ def _metrics(pairs: tuple[_ScoredPair, ...], threshold: float) -> EntailmentMetr
     )
 
 
+def _length_bucket(length: int, boundaries: tuple[int, ...]) -> str:
+    lower = 0
+    for upper in boundaries:
+        if length <= upper:
+            return f"{lower}-{upper}"
+        lower = upper + 1
+    return f"{lower}+"
+
+
+def _slice_values(
+    item: _ValidatedPair,
+    metadata: EntailmentSliceMetadata,
+    policy: DriftSlicePolicy,
+) -> dict[str, str]:
+    return {
+        "language": metadata.language,
+        "document_domain": metadata.document_domain,
+        "claim_length_utf8": _length_bucket(
+            len(item.pair.claim.encode("utf-8")),
+            policy.claim_length_utf8_boundaries,
+        ),
+        "evidence_length_utf8": _length_bucket(
+            len(item.pair.evidence.encode("utf-8")),
+            policy.evidence_length_utf8_boundaries,
+        ),
+    }
+
+
+def _validate_slice_metadata(
+    calibration: tuple[_ValidatedPair, ...],
+    evaluation: tuple[_ValidatedPair, ...],
+    metadata: Mapping[str, EntailmentSliceMetadata],
+    policy: DriftSlicePolicy,
+) -> tuple[dict[str, EntailmentSliceMetadata], str]:
+    if not isinstance(metadata, Mapping):
+        raise TypeError("drift_slice_metadata must be a mapping")
+    expected_case_ids = {item.pair.case_id for item in (*calibration, *evaluation)}
+    if set(metadata) != expected_case_ids:
+        raise EntailmentEvaluationError(
+            "drift slice metadata must exactly cover both split case IDs"
+        )
+    normalized: dict[str, EntailmentSliceMetadata] = {}
+    for case_id in expected_case_ids:
+        item = metadata[case_id]
+        if not isinstance(item, EntailmentSliceMetadata):
+            raise TypeError("drift slice metadata contains an unsupported value")
+        normalized[case_id] = item
+
+    rows: list[dict[str, str]] = []
+    for split_name, pairs in (("calibration", calibration), ("evaluation", evaluation)):
+        for item in pairs:
+            values = _slice_values(item, normalized[item.pair.case_id], policy)
+            rows.append(
+                {
+                    "case_id_sha256": item.case_id_sha256,
+                    "split": split_name,
+                    **values,
+                }
+            )
+    for dimension in (
+        "language",
+        "document_domain",
+        "claim_length_utf8",
+        "evidence_length_utf8",
+    ):
+        if len({row[dimension] for row in rows}) > policy.max_values_per_dimension:
+            raise EntailmentEvaluationError(
+                f"{dimension} exceeds the configured category limit"
+            )
+    rows.sort(key=lambda row: (row["split"], row["case_id_sha256"]))
+    return normalized, _sha256(_canonical_json(rows))
+
+
+def _slice_has_metric_support(
+    pairs: tuple[_ScoredPair, ...],
+    policy: DriftSlicePolicy,
+) -> bool:
+    if len(pairs) < policy.min_pairs_per_split:
+        return False
+    supported = sum(
+        item.validated.pair.label is EntailmentLabel.SUPPORTED for item in pairs
+    )
+    unsupported = len(pairs) - supported
+    return min(supported, unsupported) >= policy.min_pairs_per_label_per_split
+
+
+def _build_drift_slices(
+    calibration: tuple[_ScoredPair, ...],
+    evaluation: tuple[_ScoredPair, ...],
+    metadata: Mapping[str, EntailmentSliceMetadata],
+    policy: DriftSlicePolicy,
+    threshold: float,
+) -> tuple[EntailmentDriftSlice, ...]:
+    dimensions = (
+        "language",
+        "document_domain",
+        "claim_length_utf8",
+        "evidence_length_utf8",
+    )
+    calibration_values = {
+        item.validated.pair.case_id: _slice_values(
+            item.validated,
+            metadata[item.validated.pair.case_id],
+            policy,
+        )
+        for item in calibration
+    }
+    evaluation_values = {
+        item.validated.pair.case_id: _slice_values(
+            item.validated,
+            metadata[item.validated.pair.case_id],
+            policy,
+        )
+        for item in evaluation
+    }
+    slices: list[EntailmentDriftSlice] = []
+    for dimension in dimensions:
+        values = sorted(
+            {row[dimension] for row in calibration_values.values()}
+            | {row[dimension] for row in evaluation_values.values()}
+        )
+        if len(values) > policy.max_values_per_dimension:
+            raise EntailmentEvaluationError(
+                f"{dimension} exceeds the configured category limit"
+            )
+        for value in values:
+            calibration_slice = tuple(
+                item
+                for item in calibration
+                if calibration_values[item.validated.pair.case_id][dimension] == value
+            )
+            evaluation_slice = tuple(
+                item
+                for item in evaluation
+                if evaluation_values[item.validated.pair.case_id][dimension] == value
+            )
+            metrics_reported = _slice_has_metric_support(
+                calibration_slice, policy
+            ) and _slice_has_metric_support(evaluation_slice, policy)
+            calibration_metrics = (
+                _metrics(calibration_slice, threshold) if metrics_reported else None
+            )
+            evaluation_metrics = (
+                _metrics(evaluation_slice, threshold) if metrics_reported else None
+            )
+            slices.append(
+                EntailmentDriftSlice(
+                    dimension=dimension,
+                    value=value,
+                    calibration_pairs=len(calibration_slice),
+                    evaluation_pairs=len(evaluation_slice),
+                    metrics_reported=metrics_reported,
+                    calibration=calibration_metrics,
+                    evaluation=evaluation_metrics,
+                    supported_precision_delta=(
+                        evaluation_metrics.supported_precision
+                        - calibration_metrics.supported_precision
+                        if metrics_reported
+                        and evaluation_metrics is not None
+                        and calibration_metrics is not None
+                        else None
+                    ),
+                    supported_recall_delta=(
+                        evaluation_metrics.supported_recall
+                        - calibration_metrics.supported_recall
+                        if metrics_reported
+                        and evaluation_metrics is not None
+                        and calibration_metrics is not None
+                        else None
+                    ),
+                    unsupported_recall_delta=(
+                        evaluation_metrics.unsupported_recall
+                        - calibration_metrics.unsupported_recall
+                        if metrics_reported
+                        and evaluation_metrics is not None
+                        and calibration_metrics is not None
+                        else None
+                    ),
+                    balanced_accuracy_delta=(
+                        evaluation_metrics.balanced_accuracy
+                        - calibration_metrics.balanced_accuracy
+                        if metrics_reported
+                        and evaluation_metrics is not None
+                        and calibration_metrics is not None
+                        else None
+                    ),
+                )
+            )
+    return tuple(slices)
+
+
 def _select_threshold(
     calibration: tuple[_ScoredPair, ...],
     policy: EntailmentPolicy,
@@ -544,6 +819,8 @@ def evaluate_entailment_diagnostic(
     scorer_id: str,
     policy: EntailmentPolicy = EntailmentPolicy(),
     semantic_leakage_guard: VersionedSemanticLeakageGuard | None = None,
+    drift_slice_metadata: Mapping[str, EntailmentSliceMetadata] | None = None,
+    drift_slice_policy: DriftSlicePolicy | None = None,
 ) -> EntailmentDiagnosticReport:
     """Calibrate on one labeled split and evaluate a disjoint holdout split.
 
@@ -562,6 +839,14 @@ def evaluate_entailment_diagnostic(
         raise TypeError(
             "semantic_leakage_guard must be a VersionedSemanticLeakageGuard"
         )
+    if (drift_slice_metadata is None) != (drift_slice_policy is None):
+        raise ValueError(
+            "drift_slice_metadata and drift_slice_policy must be provided together"
+        )
+    if drift_slice_policy is not None and not isinstance(
+        drift_slice_policy, DriftSlicePolicy
+    ):
+        raise TypeError("drift_slice_policy must be a DriftSlicePolicy")
     calibration_validated = _validate_split(
         calibration_pairs,
         split_name="calibration split",
@@ -610,6 +895,15 @@ def evaluate_entailment_diagnostic(
             threshold=policy.semantic_duplicate_similarity_threshold,
             budget=semantic_similarity_budget,
         )
+    normalized_slice_metadata: dict[str, EntailmentSliceMetadata] = {}
+    slice_assignment_sha256: str | None = None
+    if drift_slice_metadata is not None and drift_slice_policy is not None:
+        normalized_slice_metadata, slice_assignment_sha256 = _validate_slice_metadata(
+            calibration_validated,
+            evaluation_validated,
+            drift_slice_metadata,
+            drift_slice_policy,
+        )
 
     calibration_scored = _score_split(
         calibration_validated,
@@ -623,6 +917,15 @@ def evaluate_entailment_diagnostic(
     )
     threshold, calibration_metrics = _select_threshold(calibration_scored, policy)
     evaluation_metrics = _metrics(evaluation_scored, threshold)
+    drift_slices: tuple[EntailmentDriftSlice, ...] = ()
+    if drift_slice_policy is not None:
+        drift_slices = _build_drift_slices(
+            calibration_scored,
+            evaluation_scored,
+            normalized_slice_metadata,
+            drift_slice_policy,
+            threshold,
+        )
     failure_reasons: list[str] = []
     for split_name, metrics in (
         ("calibration", calibration_metrics),
@@ -647,6 +950,14 @@ def evaluate_entailment_diagnostic(
         if semantic_leakage_guard is not None
         else None
     )
+    drift_slice_version = (
+        DRIFT_SLICE_VERSION if drift_slice_policy is not None else None
+    )
+    drift_slice_policy_sha256 = (
+        _sha256(_canonical_json(asdict(drift_slice_policy)))
+        if drift_slice_policy is not None
+        else None
+    )
     report_document = {
         "schema_version": SCHEMA_VERSION,
         "leakage_guard_version": LEAKAGE_GUARD_VERSION,
@@ -664,6 +975,10 @@ def evaluate_entailment_diagnostic(
         "semantic_scorer_id": semantic_scorer_id,
         "semantic_model_revision_sha256": semantic_model_revision_sha256,
         "semantic_duplicate_comparisons": semantic_similarity_budget.used,
+        "drift_slice_version": drift_slice_version,
+        "drift_slice_policy_sha256": drift_slice_policy_sha256,
+        "slice_assignment_sha256": slice_assignment_sha256,
+        "drift_slices": [asdict(item) for item in drift_slices],
     }
     return EntailmentDiagnosticReport(
         schema_version=SCHEMA_VERSION,
@@ -683,4 +998,8 @@ def evaluate_entailment_diagnostic(
         semantic_scorer_id=semantic_scorer_id,
         semantic_model_revision_sha256=semantic_model_revision_sha256,
         semantic_duplicate_comparisons=semantic_similarity_budget.used,
+        drift_slice_version=drift_slice_version,
+        drift_slice_policy_sha256=drift_slice_policy_sha256,
+        slice_assignment_sha256=slice_assignment_sha256,
+        drift_slices=drift_slices,
     )
