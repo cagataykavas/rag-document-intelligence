@@ -76,9 +76,54 @@ appropriate only for bounded offline suites; larger corpora need a reviewed sema
 index and a separate recall benchmark.
 
 Adapter exceptions and invalid, boolean, non-finite or out-of-range similarities are normalized at
-the untrusted boundary without copying provider diagnostics or evaluated text. The v3 report binds
+the untrusted boundary without copying provider diagnostics or evaluated text. The v4 report binds
 the guard version, scorer ID, immutable model-artifact SHA-256 and actual comparison count. It does
 not store raw pair text.
+
+## Privacy-reduced drift slices
+
+Drift slicing is explicit and opt-in. Callers provide a low-cardinality language and document-domain
+category for every calibration and holdout case, plus a policy that sets sample floors and UTF-8
+length buckets:
+
+```python
+from src.entailment_eval import (
+    DriftSlicePolicy,
+    EntailmentSliceMetadata,
+)
+
+slice_metadata = {
+    "cal-1": EntailmentSliceMetadata(language="en", document_domain="security"),
+    "cal-2": EntailmentSliceMetadata(language="tr", document_domain="finance"),
+    # Every calibration and holdout case ID must appear exactly once.
+}
+
+report = evaluate_entailment_diagnostic(
+    calibration,
+    evaluation_pairs,
+    scorer=my_cross_encoder,
+    scorer_id="multilingual-nli-2026-10",
+    drift_slice_metadata=slice_metadata,
+    drift_slice_policy=DriftSlicePolicy(
+        min_pairs_per_split=20,
+        min_pairs_per_label_per_split=5,
+        claim_length_utf8_boundaries=(64, 256),
+        evidence_length_utf8_boundaries=(256, 1024),
+    ),
+)
+```
+
+The same calibration-selected threshold is applied to every slice. For language, document domain,
+claim length and evidence length, the report compares calibration and holdout confusion metrics and
+their deltas. Metrics are emitted only when both splits meet the total-pair floor and contain the
+configured minimum number of both `supported` and `unsupported` labels. Below-floor slices expose
+only aggregate pair counts; they do not emit unstable confusion metrics or deltas.
+
+Category values are restricted to 32 safe characters and their count is bounded per dimension.
+They are intentionally visible in the audit report, so callers must use reviewed, non-sensitive
+taxonomy labels rather than tenant, customer or document names. Raw claim/evidence text and case IDs
+remain absent. A SHA-256 commitment binds every hashed case ID to its split, categories and computed
+length buckets; a separate commitment binds the slicing policy.
 
 ## Leakage-safe calibration
 
@@ -115,7 +160,8 @@ The report contains:
 - SHA-256 commitments to case identity, exact claim/evidence contents, labels and scores;
 - policy and final report commitments;
 - the versioned near-duplicate guard and number of bounded similarity comparisons;
-- optional semantic-leakage guard provenance and completed comparison count.
+- optional semantic-leakage guard provenance and completed comparison count;
+- optional privacy-reduced drift slices, suppression decisions and metric deltas.
 
 Raw claim and evidence text are intentionally omitted from the audit report. These hashes are
 integrity commitments, not anonymization; predictable text may still be vulnerable to guessing.
@@ -133,4 +179,6 @@ SHA-256 revision proves byte identity, not model quality. Both lexical and seman
 reject legitimately related but non-duplicate examples. Performance depends on representative
 labels and may drift by language, domain, claim granularity and evidence length. Deployments should
 keep a sealed holdout set, review class balance and recalibrate after any scorer or data-distribution
-change. The next increment should report these drift slices explicitly without exposing raw text.
+change. Slice deltas do not provide confidence intervals, hypothesis tests or serving-population
+weights. A useful next increment is a versioned baseline comparator with uncertainty bounds and
+reviewed per-slice regression thresholds.
