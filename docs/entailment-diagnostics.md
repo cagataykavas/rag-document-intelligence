@@ -125,6 +125,81 @@ taxonomy labels rather than tenant, customer or document names. Raw claim/eviden
 remain absent. A SHA-256 commitment binds every hashed case ID to its split, categories and computed
 length buckets; a separate commitment binds the slicing policy.
 
+## Versioned baseline regression gate
+
+An accepted sliced report can be sealed as an immutable baseline. The artifact contains only the
+source commitments, confusion matrices and reportable low-cardinality slice keys. It can be stored
+as canonical JSON and loaded in a later release job with exact-field, type, metric-consistency and
+SHA-256 integrity checks:
+
+```python
+import json
+
+from src.entailment_baseline import (
+    EntailmentRegressionPolicy,
+    MetricRegressionThresholds,
+    SliceRegressionRule,
+    compare_entailment_baseline,
+    create_entailment_baseline,
+    load_entailment_baseline,
+)
+
+baseline = create_entailment_baseline(
+    accepted_report,
+    baseline_id="sealed-holdout",
+    baseline_version=3,
+)
+baseline_json = json.dumps(baseline.to_audit_dict(), sort_keys=True)
+baseline = load_entailment_baseline(json.loads(baseline_json))
+
+global_limits = MetricRegressionThresholds(
+    max_supported_precision_drop=0.02,
+    max_supported_recall_drop=0.03,
+    max_unsupported_recall_drop=0.03,
+    max_balanced_accuracy_drop=0.02,
+)
+
+# This mapping is reviewed configuration, not inferred from the candidate run.
+reviewed_slice_limits = {
+    ("language", "tr"): global_limits,
+    ("document_domain", "finance"): global_limits,
+    ("claim_length_utf8", "65-256"): global_limits,
+    ("evidence_length_utf8", "0-256"): global_limits,
+}
+comparison_policy = EntailmentRegressionPolicy(
+    confidence_level=0.95,
+    global_thresholds=global_limits,
+    slice_rules=tuple(
+        SliceRegressionRule(dimension, value, thresholds)
+        for (dimension, value), thresholds in reviewed_slice_limits.items()
+    ),
+)
+
+comparison = compare_entailment_baseline(
+    baseline,
+    candidate_report,
+    comparison_policy,
+)
+```
+
+Each rate receives a Wilson score interval. Candidate-minus-baseline bounds use Newcombe's
+independent-proportions construction: the point difference is widened by the root-sum-square of the
+relevant Wilson deviations. A metric regresses only when the difference interval's upper bound is
+below the negative reviewed tolerance. A lower point estimate whose interval still overlaps the
+tolerance is therefore not presented as a statistically resolved regression.
+
+Supported precision uses predicted-supported trials, supported recall uses labeled-supported trials
+and unsupported recall uses labeled-unsupported trials. Balanced-accuracy bounds average the two
+recall bounds. The uncertainty method has an explicit version in every comparison artifact so a
+future statistical change cannot silently alter historical gates.
+
+The candidate must use the same diagnostic schema, entailment policy and drift-slice policy as the
+baseline. Its own entailment policy must still pass. Reviewed rules must exactly cover all reportable
+baseline slices; a missing or newly reportable unreviewed slice fails closed instead of being silently
+excluded. Both baseline and comparison artifacts omit claims, evidence and case IDs. Their SHA-256
+digests detect accidental or malicious modification but do not authenticate who approved an artifact;
+production promotion should add repository review or an external signature.
+
 ## Leakage-safe calibration
 
 The supported threshold is selected only from the calibration split. Among thresholds that satisfy
@@ -179,6 +254,6 @@ SHA-256 revision proves byte identity, not model quality. Both lexical and seman
 reject legitimately related but non-duplicate examples. Performance depends on representative
 labels and may drift by language, domain, claim granularity and evidence length. Deployments should
 keep a sealed holdout set, review class balance and recalibrate after any scorer or data-distribution
-change. Slice deltas do not provide confidence intervals, hypothesis tests or serving-population
-weights. A useful next increment is a versioned baseline comparator with uncertainty bounds and
-reviewed per-slice regression thresholds.
+change. The comparator's independent-proportions bounds are conservative and do not model paired-case
+correlation, multiple comparisons or serving-population weights. A useful next increment is a
+paired bootstrap over sealed case-level score commitments with an explicit family-wise error policy.
