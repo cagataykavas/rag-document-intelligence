@@ -393,6 +393,10 @@ budgeted paraphrase scan and binds its model-artifact SHA-256 and work count to 
 Optional language, document-domain and UTF-8 length drift slices compare calibration and holdout
 metrics only after both total-sample and per-label floors are met. Below-floor slices expose counts
 without unstable metrics; hashed case assignments and the slice policy are bound to the v4 report.
+`src/entailment_baseline.py` can seal an accepted v4 report as a versioned, content-addressed
+baseline and compare a later report with Wilson/Newcombe uncertainty bounds. Global tolerances and
+every reportable baseline slice require explicit reviewed thresholds; missing, suppressed, newly
+appearing unreviewed slices and incompatible policies fail closed.
 
 The content-minimizing report exposes confusion matrices, supported precision/recall,
 unsupported recall, balanced accuracy, explicit policy failures and SHA-256 commitments
@@ -401,7 +405,7 @@ record. Scorer exceptions and invalid probabilities are contained at the evaluat
 boundary. This is a probabilistic release diagnostic—not online execution authority and
 not proof of source authority or factual truth. See
 [`docs/entailment-diagnostics.md`](docs/entailment-diagnostics.md) for the calibration
-contract and limitations.
+contract, baseline comparison workflow and limitations.
 
 ## Optional LLM wrapper
 
