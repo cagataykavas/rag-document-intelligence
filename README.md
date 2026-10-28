@@ -397,6 +397,10 @@ without unstable metrics; hashed case assignments and the slice policy are bound
 baseline and compare a later report with Wilson/Newcombe uncertainty bounds. Global tolerances and
 every reportable baseline slice require explicit reviewed thresholds; missing, suppressed, newly
 appearing unreviewed slices and incompatible policies fail closed.
+`src/entailment_paired_regression.py` additionally seals the exact scored holdout rows already bound
+by a report and runs a deterministic, stratified paired bootstrap when baseline and candidate cover
+the same case/content/label commitments. Bonferroni-adjusted one-sided bounds control family-wise
+error across the four global metrics, and a hard draw budget bounds release-job work.
 
 The content-minimizing report exposes confusion matrices, supported precision/recall,
 unsupported recall, balanced accuracy, explicit policy failures and SHA-256 commitments
@@ -405,7 +409,7 @@ record. Scorer exceptions and invalid probabilities are contained at the evaluat
 boundary. This is a probabilistic release diagnostic—not online execution authority and
 not proof of source authority or factual truth. See
 [`docs/entailment-diagnostics.md`](docs/entailment-diagnostics.md) for the calibration
-contract, baseline comparison workflow and limitations.
+contract, independent and paired comparison workflows, and limitations.
 
 ## Optional LLM wrapper
 

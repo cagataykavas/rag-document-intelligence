@@ -200,6 +200,71 @@ excluded. Both baseline and comparison artifacts omit claims, evidence and case 
 digests detect accidental or malicious modification but do not authenticate who approved an artifact;
 production promotion should add repository review or an external signature.
 
+## Paired holdout regression gate
+
+When two scorers are evaluated on the exact same sealed holdout, the paired comparator can retain
+that case-level correlation instead of treating their aggregate rates as independent. Callers must
+capture the score mapping used by each diagnostic run; the ledger builder does not invoke or trust a
+scorer a second time:
+
+```python
+import json
+
+from src.entailment_paired_regression import (
+    PairedBootstrapPolicy,
+    compare_paired_score_ledgers,
+    create_evaluation_score_ledger,
+    load_evaluation_score_ledger,
+)
+
+baseline_ledger = create_evaluation_score_ledger(
+    accepted_report,
+    evaluation_pairs,
+    accepted_scores_by_case_id,
+)
+baseline_ledger = load_evaluation_score_ledger(
+    json.loads(json.dumps(baseline_ledger.to_audit_dict()))
+)
+candidate_ledger = create_evaluation_score_ledger(
+    candidate_report,
+    evaluation_pairs,
+    candidate_scores_by_case_id,
+)
+
+paired_policy = PairedBootstrapPolicy(
+    confidence_level=0.95,
+    resamples=10_000,
+    thresholds=global_limits,
+    family_wise_method="bonferroni",
+)
+paired_comparison = compare_paired_score_ledgers(
+    baseline_ledger,
+    candidate_ledger,
+    paired_policy,
+)
+```
+
+Ledger creation reproduces the diagnostic's evaluation SHA-256 and confusion matrix before sealing
+the artifact. It stores sorted SHA-256 commitments to case IDs and exact content, labels and scores,
+but never raw IDs, claims or evidence. Comparison requires identical case/content/label commitments,
+diagnostic schemas and entailment policies, so a changed population cannot masquerade as a paired
+experiment.
+
+The bootstrap resamples supported and unsupported cases separately and uses each sampled case for
+both scorers. Its seed is derived from the two ledger digests, method version and policy digest; a
+SHA-256 counter sampler makes repeated runs deterministic. For the four global metrics, a regression
+is reported only when the Bonferroni-adjusted one-sided upper delta bound is below the negative
+reviewed tolerance. The method, seed commitment, adjusted confidence, hypothesis count and bounded
+resample count are included in the comparison artifact. Jobs fail before sampling when requested
+work exceeds five million case draws.
+
+The paired gate currently covers only global metrics. The v4 report does not expose a separately
+verifiable evaluation-only slice assignment, so manufacturing per-slice pairs from aggregate slice
+counts would be unsafe. The ledger also reveals labels, scores and stable pseudonymous commitments;
+hashes are integrity commitments rather than anonymization, and access should be restricted. The
+percentile bootstrap is an offline diagnostic, not a sequential test, serving-population weighting
+scheme, baseline approval signature or online serving authority.
+
 ## Leakage-safe calibration
 
 The supported threshold is selected only from the calibration split. Among thresholds that satisfy
@@ -254,6 +319,8 @@ SHA-256 revision proves byte identity, not model quality. Both lexical and seman
 reject legitimately related but non-duplicate examples. Performance depends on representative
 labels and may drift by language, domain, claim granularity and evidence length. Deployments should
 keep a sealed holdout set, review class balance and recalibrate after any scorer or data-distribution
-change. The comparator's independent-proportions bounds are conservative and do not model paired-case
-correlation, multiple comparisons or serving-population weights. A useful next increment is a
-paired bootstrap over sealed case-level score commitments with an explicit family-wise error policy.
+change. The baseline comparator's per-slice independent-proportions bounds remain conservative. The
+paired gate models global case correlation and controls the four-metric family-wise error rate, but
+it does not provide paired slice inference, serving-population weights or repeated-look error
+control. A useful next increment is an evaluation-only slice-assignment commitment that can safely
+bind paired per-slice bootstrap samples.
