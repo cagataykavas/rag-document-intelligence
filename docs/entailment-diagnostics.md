@@ -258,12 +258,48 @@ reviewed tolerance. The method, seed commitment, adjusted confidence, hypothesis
 resample count are included in the comparison artifact. Jobs fail before sampling when requested
 work exceeds five million case draws.
 
-The paired gate currently covers only global metrics. The v4 report does not expose a separately
-verifiable evaluation-only slice assignment, so manufacturing per-slice pairs from aggregate slice
-counts would be unsafe. The ledger also reveals labels, scores and stable pseudonymous commitments;
-hashes are integrity commitments rather than anonymization, and access should be restricted. The
-percentile bootstrap is an offline diagnostic, not a sequential test, serving-population weighting
-scheme, baseline approval signature or online serving authority.
+### Verified evaluation-only slice assignments
+
+The diagnostic report commits to calibration and evaluation assignments together. A separate
+artifact reproduces that combined commitment and every aggregate slice count before sealing only
+the evaluation rows needed for paired analysis:
+
+```python
+from src.entailment_slice_assignment import (
+    create_evaluation_slice_assignment,
+    join_evaluation_slice_assignments,
+    load_evaluation_slice_assignment,
+)
+
+assignments = create_evaluation_slice_assignment(
+    accepted_report,
+    calibration_pairs,
+    evaluation_pairs,
+    slice_metadata,
+    drift_slice_policy,
+)
+assignments = load_evaluation_slice_assignment(
+    json.loads(json.dumps(assignments.to_audit_dict()))
+)
+slice_score_rows = join_evaluation_slice_assignments(
+    baseline_ledger,
+    assignments,
+)
+```
+
+Rows contain stable case and content SHA-256 commitments plus the four low-cardinality slice values;
+they omit raw case IDs, claims and evidence. The join integrity-checks both artifacts and requires an
+exact report schema, report digest, evaluation digest, row ordering and case/content population match.
+The artifact is reusable only with a score ledger from the same report, preventing unrelated slice
+metadata from being attached to scored cases.
+
+The paired comparator still gates only global metrics; the verified joined rows are evidence-ready
+input rather than a claim of per-slice statistical support. A next increment should add reviewed
+per-slice thresholds and family-wise-error accounting across both metrics and slices. The score and
+assignment ledgers reveal labels, scores, low-cardinality categories and stable pseudonymous
+commitments; hashes are integrity commitments rather than anonymization, and access should be
+restricted. The percentile bootstrap is an offline diagnostic, not a sequential test,
+serving-population weighting scheme, baseline approval signature or online serving authority.
 
 ## Leakage-safe calibration
 
@@ -320,7 +356,8 @@ reject legitimately related but non-duplicate examples. Performance depends on r
 labels and may drift by language, domain, claim granularity and evidence length. Deployments should
 keep a sealed holdout set, review class balance and recalibrate after any scorer or data-distribution
 change. The baseline comparator's per-slice independent-proportions bounds remain conservative. The
-paired gate models global case correlation and controls the four-metric family-wise error rate, but
-it does not provide paired slice inference, serving-population weights or repeated-look error
-control. A useful next increment is an evaluation-only slice-assignment commitment that can safely
-bind paired per-slice bootstrap samples.
+paired gate models global case correlation and controls the four-metric family-wise error rate.
+Evaluation-only slice assignments can now be verified and joined to scored rows, but the comparator
+does not yet provide paired slice inference, serving-population weights or repeated-look error
+control. A useful next increment is reviewed per-slice bootstrap policy with explicit multiplicity
+accounting and minimum sample floors.
