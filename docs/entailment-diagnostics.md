@@ -293,12 +293,52 @@ exact report schema, report digest, evaluation digest, row ordering and case/con
 The artifact is reusable only with a score ledger from the same report, preventing unrelated slice
 metadata from being attached to scored cases.
 
-The paired comparator still gates only global metrics; the verified joined rows are evidence-ready
-input rather than a claim of per-slice statistical support. A next increment should add reviewed
-per-slice thresholds and family-wise-error accounting across both metrics and slices. The score and
-assignment ledgers reveal labels, scores, low-cardinality categories and stable pseudonymous
-commitments; hashes are integrity commitments rather than anonymization, and access should be
-restricted. The percentile bootstrap is an offline diagnostic, not a sequential test,
+### Paired per-slice regression gate
+
+Per-slice inference requires a separately verified assignment for each report because each score
+ledger is bound to its own report digest. The comparator then proves that both assignment artifacts
+encode the same case/content/slice population before sampling:
+
+```python
+from src.entailment_slice_regression import (
+    PairedSliceBootstrapPolicy,
+    SliceRegressionRule,
+    compare_paired_slice_scores,
+)
+
+slice_policy = PairedSliceBootstrapPolicy(
+    confidence_level=0.95,
+    resamples=10_000,
+    rules=(
+        SliceRegressionRule(
+            dimension="language",
+            value="en",
+            min_pairs=200,
+            min_pairs_per_label=50,
+            thresholds=reviewed_thresholds,
+        ),
+    ),
+)
+comparison = compare_paired_slice_scores(
+    baseline_ledger,
+    candidate_ledger,
+    baseline_assignments,
+    candidate_assignments,
+    slice_policy,
+)
+```
+
+Rules are unique and canonically ordered, preventing ambiguous policy digests. Every required slice
+must satisfy both its total and per-label floor; missing or underpowered slices fail closed rather
+than emitting unstable bounds. Supported and unsupported rows are resampled separately while each
+case index remains paired across scorers. The one-sided confidence level is Bonferroni-adjusted over
+all four metrics for every reviewed slice, including overlapping slices. The artifact records the
+hypothesis count, adjusted confidence, actual draw count, seed and policy commitments, slice counts,
+bounds and failures. Work above five million case draws is rejected before sampling.
+
+The score and assignment ledgers reveal labels, scores, low-cardinality categories and stable
+pseudonymous commitments; hashes are integrity commitments rather than anonymization, and access
+should be restricted. The percentile bootstrap is an offline diagnostic, not a sequential test,
 serving-population weighting scheme, baseline approval signature or online serving authority.
 
 ## Leakage-safe calibration
@@ -356,8 +396,8 @@ reject legitimately related but non-duplicate examples. Performance depends on r
 labels and may drift by language, domain, claim granularity and evidence length. Deployments should
 keep a sealed holdout set, review class balance and recalibrate after any scorer or data-distribution
 change. The baseline comparator's per-slice independent-proportions bounds remain conservative. The
-paired gate models global case correlation and controls the four-metric family-wise error rate.
-Evaluation-only slice assignments can now be verified and joined to scored rows, but the comparator
-does not yet provide paired slice inference, serving-population weights or repeated-look error
-control. A useful next increment is reviewed per-slice bootstrap policy with explicit multiplicity
-accounting and minimum sample floors.
+paired global and slice gates model case correlation and use explicit family-wise-error accounting,
+but do not provide serving-population weights or repeated-look error control. Reviewed rules must be
+chosen before evaluation; selecting slices after observing results invalidates the stated error
+budget. A useful next increment is a signed release manifest that binds the accepted global and
+slice comparisons to one candidate artifact.
