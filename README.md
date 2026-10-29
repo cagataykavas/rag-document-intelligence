@@ -404,7 +404,10 @@ error across the four global metrics, and a hard draw budget bounds release-job 
 `src/entailment_slice_assignment.py` independently seals the evaluation-only language, domain and
 length-bucket assignments. Creation reproduces the report's combined assignment and aggregate slice
 counts; joining to a score ledger requires the exact report, evaluation and case/content commitments.
-This provides auditable input for future paired slice inference without storing raw cases.
+`src/entailment_slice_regression.py` consumes independently verified baseline and candidate
+assignments, requires explicit slice rules and total/per-label sample floors, and runs deterministic
+label-stratified paired bootstraps. One Bonferroni budget covers every reviewed slice-metric
+hypothesis; a hard aggregate draw budget fails before sampling. Neither artifact stores raw cases.
 
 The content-minimizing report exposes confusion matrices, supported precision/recall,
 unsupported recall, balanced accuracy, explicit policy failures and SHA-256 commitments
@@ -511,6 +514,7 @@ src/prompting.py       zero/one/few-shot prompt construction
 src/prompt_eval.py     prompt-mode experiment harness
 src/entailment_eval.py leakage-safe calibrated entailment diagnostic
 src/entailment_slice_assignment.py verified evaluation-only slice commitments
+src/entailment_slice_regression.py paired per-slice bootstrap release gate
 src/retrieval_eval.py  Hit/Recall/Precision/MRR/nDCG metrics
 src/evaluate.py        labelled end-to-end evaluation
 src/conflicts.py       deterministic requirement contradictions
@@ -532,7 +536,7 @@ GitHub Actions runs without an external LLM key and checks:
 - page-bounded PDF chunking and content-bound page locators;
 - prompt-injection quarantine behavior;
 - zero/one/few-shot evaluation harness;
-- disjoint-split entailment calibration, bounded lexical/semantic leakage checks, privacy-reduced reports, and verified evaluation-only slice assignments;
+- disjoint-split entailment calibration, bounded lexical/semantic leakage checks, privacy-reduced reports, verified evaluation-only slice assignments, and paired per-slice regression gates;
 - requirement-conflict analysis;
 - REST API behavior;
 - Docker Compose validation;
