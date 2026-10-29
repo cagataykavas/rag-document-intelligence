@@ -401,6 +401,10 @@ appearing unreviewed slices and incompatible policies fail closed.
 by a report and runs a deterministic, stratified paired bootstrap when baseline and candidate cover
 the same case/content/label commitments. Bonferroni-adjusted one-sided bounds control family-wise
 error across the four global metrics, and a hard draw budget bounds release-job work.
+`src/entailment_slice_assignment.py` independently seals the evaluation-only language, domain and
+length-bucket assignments. Creation reproduces the report's combined assignment and aggregate slice
+counts; joining to a score ledger requires the exact report, evaluation and case/content commitments.
+This provides auditable input for future paired slice inference without storing raw cases.
 
 The content-minimizing report exposes confusion matrices, supported precision/recall,
 unsupported recall, balanced accuracy, explicit policy failures and SHA-256 commitments
@@ -506,6 +510,7 @@ src/claims.py          claim-to-exact-source-span commitments and verification
 src/prompting.py       zero/one/few-shot prompt construction
 src/prompt_eval.py     prompt-mode experiment harness
 src/entailment_eval.py leakage-safe calibrated entailment diagnostic
+src/entailment_slice_assignment.py verified evaluation-only slice commitments
 src/retrieval_eval.py  Hit/Recall/Precision/MRR/nDCG metrics
 src/evaluate.py        labelled end-to-end evaluation
 src/conflicts.py       deterministic requirement contradictions
@@ -527,7 +532,7 @@ GitHub Actions runs without an external LLM key and checks:
 - page-bounded PDF chunking and content-bound page locators;
 - prompt-injection quarantine behavior;
 - zero/one/few-shot evaluation harness;
-- disjoint-split entailment calibration, bounded lexical/semantic leakage checks, scorer failures, and privacy-reduced reports;
+- disjoint-split entailment calibration, bounded lexical/semantic leakage checks, privacy-reduced reports, and verified evaluation-only slice assignments;
 - requirement-conflict analysis;
 - REST API behavior;
 - Docker Compose validation;
