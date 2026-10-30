@@ -384,9 +384,52 @@ verify_candidate_release_manifest(
 The signature uses a purpose-separated HMAC-SHA256 construction and requires at least 32 bytes of
 key material. Canonical JSON loading rejects duplicate, extra and noncanonical representations.
 HMAC is intentionally a compact reference implementation: every verifier holding the shared secret
-can also issue manifests. It does not provide asymmetric approval, key revocation, transparency
-logging, hardware-backed custody or deployment locking. A production next step is an asymmetric
-KMS-backed signer with a public verifier, signer identity and append-only release log.
+can also issue manifests. It does not provide asymmetric approval, key revocation, hardware-backed
+custody or deployment locking.
+
+## Append-only candidate release log
+
+After verification, a candidate manifest can enter a bounded canonical JSONL log. Each entry binds
+the authenticated manifest, candidate artifact, source commit, issue time and previous entry digest.
+The caller supplies the last trusted head as a compare-and-swap precondition, so two workers starting
+from the same head cannot silently create two accepted successors:
+
+```python
+from pathlib import Path
+
+from src.entailment_release_log import (
+    RELEASE_LOG_GENESIS_SHA256,
+    append_verified_candidate_release,
+    verify_release_log,
+)
+
+entry = append_verified_candidate_release(
+    Path("evidence/candidate-releases.jsonl"),
+    manifest,
+    global_comparison,
+    slice_comparison,
+    candidate,
+    keys={"release-key-2026-10": release_key},
+    current_epoch=now,
+    expected_head_sha256=RELEASE_LOG_GENESIS_SHA256,
+)
+snapshot = verify_release_log(
+    Path("evidence/candidate-releases.jsonl"),
+    expected_head_sha256=entry.entry_sha256,
+)
+```
+
+Appending first authenticates the manifest and its exact comparison evidence. A POSIX file lock then
+serializes writers; inside the lock, the implementation verifies the complete chain, enforces the
+expected head, strictly advancing sequence and issue time, and unique release, manifest and artifact
+identities before `fsync`. Readers reject partial lines, duplicate or unknown fields, noncanonical
+JSON, broken links and edited entry digests. Capacity is bounded before parsing or appending.
+
+The local log is append-only only for cooperating processes. A filesystem administrator can replace
+the whole file and recompute an unkeyed chain, while tail deletion is visible only when the expected
+head is pinned elsewhere. Production should retain that head in a separately protected CI
+attestation, transparency service or immutable object store. The next trust-boundary increment is an
+asymmetric KMS-backed manifest signer with public verification and externally anchored log heads.
 
 ## Leakage-safe calibration
 

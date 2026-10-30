@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, replace
+from pathlib import Path
 
 import pytest
 
@@ -21,6 +22,12 @@ from src.entailment_release_manifest import (
     sign_candidate_release_manifest,
     verify_candidate_release_manifest,
 )
+from src.entailment_release_log import (
+    RELEASE_LOG_GENESIS_SHA256,
+    ReleaseLogError,
+    append_verified_candidate_release,
+    verify_release_log,
+)
 from src.entailment_slice_regression import (
     SLICE_BOOTSTRAP_METHOD_VERSION,
     SLICE_COMPARISON_SCHEMA_VERSION,
@@ -30,7 +37,7 @@ from src.entailment_slice_regression import (
 )
 
 KEY = b"release-manifest-test-key-material-32"
-ZERO, ONE, TWO, THREE = (character * 64 for character in "0123")
+ZERO, ONE, TWO, THREE, FOUR = (character * 64 for character in "01234")
 
 
 def digest(value: object) -> str:
@@ -130,6 +137,25 @@ def manifest() -> CandidateReleaseManifest:
         key=KEY,
         issued_at_epoch=100,
         expires_at_epoch=200,
+    )
+
+
+def later_manifest() -> tuple[CandidateReleaseManifest, CandidateArtifact]:
+    later_candidate = replace(
+        candidate(), artifact_sha256=FOUR, source_commit_sha="b" * 40
+    )
+    return (
+        sign_candidate_release_manifest(
+            global_comparison(),
+            slice_comparison(),
+            later_candidate,
+            release_id="candidate-2026-10-31",
+            key_id="release-key-2026-10",
+            key=KEY,
+            issued_at_epoch=201,
+            expires_at_epoch=300,
+        ),
+        later_candidate,
     )
 
 
@@ -250,3 +276,186 @@ def test_loader_rejects_duplicate_extra_and_noncanonical_fields() -> None:
         )
     with pytest.raises(ReleaseManifestError, match="not canonical"):
         load_candidate_release_manifest(json.dumps(json.loads(payload)).encode("ascii"))
+
+
+def test_release_log_appends_authenticated_manifests_as_a_hash_chain(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "release-log.jsonl"
+    first = append_verified_candidate_release(
+        path,
+        manifest(),
+        global_comparison(),
+        slice_comparison(),
+        candidate(),
+        keys={"release-key-2026-10": KEY},
+        current_epoch=150,
+        expected_head_sha256=RELEASE_LOG_GENESIS_SHA256,
+    )
+    signed_later, candidate_later = later_manifest()
+    second = append_verified_candidate_release(
+        path,
+        signed_later,
+        global_comparison(),
+        slice_comparison(),
+        candidate_later,
+        keys={"release-key-2026-10": KEY},
+        current_epoch=250,
+        expected_head_sha256=first.entry_sha256,
+    )
+
+    snapshot = verify_release_log(path, expected_head_sha256=second.entry_sha256)
+
+    assert [entry.sequence for entry in snapshot.entries] == [1, 2]
+    assert snapshot.entries[1].previous_entry_sha256 == first.entry_sha256
+    assert snapshot.head_sha256 == second.entry_sha256
+
+
+def test_release_log_rejects_stale_writer_without_modifying_file(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "release-log.jsonl"
+    first = append_verified_candidate_release(
+        path,
+        manifest(),
+        global_comparison(),
+        slice_comparison(),
+        candidate(),
+        keys={"release-key-2026-10": KEY},
+        current_epoch=150,
+        expected_head_sha256=RELEASE_LOG_GENESIS_SHA256,
+    )
+    original = path.read_bytes()
+    signed_later, candidate_later = later_manifest()
+
+    with pytest.raises(ReleaseLogError, match="stale writer"):
+        append_verified_candidate_release(
+            path,
+            signed_later,
+            global_comparison(),
+            slice_comparison(),
+            candidate_later,
+            keys={"release-key-2026-10": KEY},
+            current_epoch=250,
+            expected_head_sha256=RELEASE_LOG_GENESIS_SHA256,
+        )
+
+    assert path.read_bytes() == original
+    assert verify_release_log(path).head_sha256 == first.entry_sha256
+
+
+def test_release_log_authenticates_manifest_before_creating_file(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "release-log.jsonl"
+
+    with pytest.raises(ReleaseManifestError, match="signature mismatch"):
+        append_verified_candidate_release(
+            path,
+            replace(manifest(), signature=ZERO),
+            global_comparison(),
+            slice_comparison(),
+            candidate(),
+            keys={"release-key-2026-10": KEY},
+            current_epoch=150,
+            expected_head_sha256=RELEASE_LOG_GENESIS_SHA256,
+        )
+
+    assert not path.exists()
+
+
+def test_release_log_detects_entry_tampering(tmp_path: Path) -> None:
+    path = tmp_path / "release-log.jsonl"
+    append_verified_candidate_release(
+        path,
+        manifest(),
+        global_comparison(),
+        slice_comparison(),
+        candidate(),
+        keys={"release-key-2026-10": KEY},
+        current_epoch=150,
+        expected_head_sha256=RELEASE_LOG_GENESIS_SHA256,
+    )
+    document = json.loads(path.read_bytes())
+    document["release_id"] = "candidate-tampered"
+    path.write_bytes(
+        json.dumps(document, sort_keys=True, separators=(",", ":")).encode("ascii")
+        + b"\n"
+    )
+
+    with pytest.raises(ReleaseLogError, match="entry digest mismatch"):
+        verify_release_log(path)
+
+
+def test_pinned_head_detects_valid_tail_truncation(tmp_path: Path) -> None:
+    path = tmp_path / "release-log.jsonl"
+    first = append_verified_candidate_release(
+        path,
+        manifest(),
+        global_comparison(),
+        slice_comparison(),
+        candidate(),
+        keys={"release-key-2026-10": KEY},
+        current_epoch=150,
+        expected_head_sha256=RELEASE_LOG_GENESIS_SHA256,
+    )
+    first_line = path.read_bytes()
+    signed_later, candidate_later = later_manifest()
+    second = append_verified_candidate_release(
+        path,
+        signed_later,
+        global_comparison(),
+        slice_comparison(),
+        candidate_later,
+        keys={"release-key-2026-10": KEY},
+        current_epoch=250,
+        expected_head_sha256=first.entry_sha256,
+    )
+    path.write_bytes(first_line)
+
+    assert verify_release_log(path).head_sha256 == first.entry_sha256
+    with pytest.raises(ReleaseLogError, match="pinned head"):
+        verify_release_log(path, expected_head_sha256=second.entry_sha256)
+
+
+def test_release_log_rejects_duplicate_release_and_partial_entry(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "release-log.jsonl"
+    first = append_verified_candidate_release(
+        path,
+        manifest(),
+        global_comparison(),
+        slice_comparison(),
+        candidate(),
+        keys={"release-key-2026-10": KEY},
+        current_epoch=150,
+        expected_head_sha256=RELEASE_LOG_GENESIS_SHA256,
+    )
+    duplicate_candidate = replace(candidate(), artifact_sha256=FOUR)
+    duplicate_release = sign_candidate_release_manifest(
+        global_comparison(),
+        slice_comparison(),
+        duplicate_candidate,
+        release_id=manifest().release_id,
+        key_id="release-key-2026-10",
+        key=KEY,
+        issued_at_epoch=201,
+        expires_at_epoch=300,
+    )
+
+    with pytest.raises(ReleaseLogError, match="release_id is already present"):
+        append_verified_candidate_release(
+            path,
+            duplicate_release,
+            global_comparison(),
+            slice_comparison(),
+            duplicate_candidate,
+            keys={"release-key-2026-10": KEY},
+            current_epoch=250,
+            expected_head_sha256=first.entry_sha256,
+        )
+
+    path.write_bytes(path.read_bytes().rstrip(b"\n"))
+    with pytest.raises(ReleaseLogError, match="partial entry"):
+        verify_release_log(path)

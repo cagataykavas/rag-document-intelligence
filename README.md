@@ -516,6 +516,7 @@ src/entailment_eval.py leakage-safe calibrated entailment diagnostic
 src/entailment_slice_assignment.py verified evaluation-only slice commitments
 src/entailment_slice_regression.py paired per-slice bootstrap release gate
 src/entailment_release_manifest.py authenticated candidate release evidence
+src/entailment_release_log.py hash-chained candidate release history with head CAS
 src/retrieval_eval.py  Hit/Recall/Precision/MRR/nDCG metrics
 src/evaluate.py        labelled end-to-end evaluation
 src/conflicts.py       deterministic requirement contradictions
@@ -537,7 +538,7 @@ GitHub Actions runs without an external LLM key and checks:
 - page-bounded PDF chunking and content-bound page locators;
 - prompt-injection quarantine behavior;
 - zero/one/few-shot evaluation harness;
-- disjoint-split entailment calibration, bounded lexical/semantic leakage checks, privacy-reduced reports, verified evaluation-only slice assignments, paired per-slice regression gates, and authenticated candidate release manifests;
+- disjoint-split entailment calibration, bounded lexical/semantic leakage checks, privacy-reduced reports, verified evaluation-only slice assignments, paired per-slice regression gates, authenticated candidate release manifests, and hash-chained release history;
 - requirement-conflict analysis;
 - REST API behavior;
 - Docker Compose validation;
