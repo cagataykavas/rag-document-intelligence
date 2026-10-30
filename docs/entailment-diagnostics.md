@@ -341,6 +341,53 @@ pseudonymous commitments; hashes are integrity commitments rather than anonymiza
 should be restricted. The percentile bootstrap is an offline diagnostic, not a sequential test,
 serving-population weighting scheme, baseline approval signature or online serving authority.
 
+## Authenticated candidate release manifest
+
+An accepted global gate and accepted per-slice gate can be bound to the exact build proposed for
+release. The manifest recomputes both comparison digests, requires both gates to cover the same
+baseline and candidate ledgers, and commits to the candidate artifact, source commit, build recipe,
+candidate diagnostic report and evaluation-slice assignment. Signing fails closed for rejected,
+empty, tampered or cross-wired comparison evidence.
+
+```python
+from src.entailment_release_manifest import (
+    CandidateArtifact,
+    sign_candidate_release_manifest,
+    verify_candidate_release_manifest,
+)
+
+candidate = CandidateArtifact(
+    artifact_sha256=image_digest,
+    source_commit_sha=git_commit,
+    build_recipe_sha256=dockerfile_digest,
+)
+manifest = sign_candidate_release_manifest(
+    global_comparison,
+    slice_comparison,
+    candidate,
+    release_id="candidate-2026-10-30",
+    key_id="release-key-2026-10",
+    key=release_key,
+    issued_at_epoch=issued,
+    expires_at_epoch=expires,
+)
+verify_candidate_release_manifest(
+    manifest,
+    global_comparison,
+    slice_comparison,
+    candidate,
+    keys={"release-key-2026-10": release_key},
+    current_epoch=now,
+)
+```
+
+The signature uses a purpose-separated HMAC-SHA256 construction and requires at least 32 bytes of
+key material. Canonical JSON loading rejects duplicate, extra and noncanonical representations.
+HMAC is intentionally a compact reference implementation: every verifier holding the shared secret
+can also issue manifests. It does not provide asymmetric approval, key revocation, transparency
+logging, hardware-backed custody or deployment locking. A production next step is an asymmetric
+KMS-backed signer with a public verifier, signer identity and append-only release log.
+
 ## Leakage-safe calibration
 
 The supported threshold is selected only from the calibration split. Among thresholds that satisfy
@@ -399,5 +446,5 @@ change. The baseline comparator's per-slice independent-proportions bounds remai
 paired global and slice gates model case correlation and use explicit family-wise-error accounting,
 but do not provide serving-population weights or repeated-look error control. Reviewed rules must be
 chosen before evaluation; selecting slices after observing results invalidates the stated error
-budget. A useful next increment is a signed release manifest that binds the accepted global and
-slice comparisons to one candidate artifact.
+budget. A useful next increment is an asymmetric KMS-backed release signer with public verification
+and an append-only transparency log.
