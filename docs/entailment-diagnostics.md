@@ -427,9 +427,49 @@ JSON, broken links and edited entry digests. Capacity is bounded before parsing 
 
 The local log is append-only only for cooperating processes. A filesystem administrator can replace
 the whole file and recompute an unkeyed chain, while tail deletion is visible only when the expected
-head is pinned elsewhere. Production should retain that head in a separately protected CI
-attestation, transparency service or immutable object store. The next trust-boundary increment is an
-asymmetric KMS-backed manifest signer with public verification and externally anchored log heads.
+head is pinned elsewhere.
+
+### Asymmetric release-head anchor
+
+`entailment_release_anchor` binds one captured log payload, its verified head, entry count, complete
+file SHA-256 and source commit into a canonical Ed25519 anchor. The production adapter invokes an
+AWS KMS asymmetric key with `MessageType=RAW` and `SigningAlgorithm=ED25519_SHA_512`; only the
+DER-encoded public key returned by `GetPublicKey` is needed for offline verification:
+
+```python
+from src.entailment_release_anchor import (
+    KmsEd25519Signer,
+    create_release_head_anchor,
+    verify_release_head_anchor,
+)
+
+payload = Path("evidence/candidate-releases.jsonl").read_bytes()
+anchor = create_release_head_anchor(
+    payload,
+    key_id="release-anchor-2026-q4",
+    source_commit_sha=source_commit,
+    issued_at_epoch=issued,
+    signer=KmsEd25519Signer(kms_client, kms_key_id=kms_key_arn),
+)
+verify_release_head_anchor(
+    anchor,
+    payload,
+    public_keys={"release-anchor-2026-q4": kms_public_key_der},
+    expected_source_commit_sha=source_commit,
+)
+```
+
+The anchor loader rejects duplicate, extra and noncanonical fields. Verification requires an exact
+source commit, checks the public-key algorithm, authenticates the signature, revalidates the complete
+bounded log and compares both the file digest and logical head. The signer adapter accepts no AWS
+diagnostics into evidence and never requires `kms:Verify` or private-key export.
+
+This separates issuance from public verification but is not an immutable store: an administrator
+can still delete the log and its anchor together. Production should retain anchors in a separately
+protected CI attestation, transparency service or Object Lock bucket, restrict KMS signing with key
+policy and `kms:SigningAlgorithm`, and maintain a reviewed public-key rotation history. The HMAC
+candidate manifest also remains shared-secret authentication; migrating manifest issuance itself to
+the asymmetric envelope is the next step.
 
 ## Leakage-safe calibration
 

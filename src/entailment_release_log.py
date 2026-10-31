@@ -208,6 +208,18 @@ def verify_release_log(
         payload = b""
     except OSError as exc:
         raise ReleaseLogError("log is unavailable") from exc
+    return verify_release_log_payload(
+        payload, expected_head_sha256=expected_head_sha256
+    )
+
+
+def verify_release_log_payload(
+    payload: bytes,
+    *,
+    expected_head_sha256: str | None = None,
+) -> ReleaseLogSnapshot:
+    """Verify one captured log payload without a second filesystem read."""
+
     snapshot = _load_payload(payload)
     if expected_head_sha256 is not None:
         expected = _digest(expected_head_sha256, "expected_head_sha256")

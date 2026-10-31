@@ -517,6 +517,7 @@ src/entailment_slice_assignment.py verified evaluation-only slice commitments
 src/entailment_slice_regression.py paired per-slice bootstrap release gate
 src/entailment_release_manifest.py authenticated candidate release evidence
 src/entailment_release_log.py hash-chained candidate release history with head CAS
+src/entailment_release_anchor.py KMS-compatible asymmetric release-head anchors
 src/retrieval_eval.py  Hit/Recall/Precision/MRR/nDCG metrics
 src/evaluate.py        labelled end-to-end evaluation
 src/conflicts.py       deterministic requirement contradictions
