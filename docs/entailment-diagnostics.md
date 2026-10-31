@@ -464,12 +464,47 @@ source commit, checks the public-key algorithm, authenticates the signature, rev
 bounded log and compares both the file digest and logical head. The signer adapter accepts no AWS
 diagnostics into evidence and never requires `kms:Verify` or private-key export.
 
-This separates issuance from public verification but is not an immutable store: an administrator
-can still delete the log and its anchor together. Production should retain anchors in a separately
-protected CI attestation, transparency service or Object Lock bucket, restrict KMS signing with key
-policy and `kms:SigningAlgorithm`, and maintain a reviewed public-key rotation history. The HMAC
-candidate manifest also remains shared-secret authentication; migrating manifest issuance itself to
-the asymmetric envelope is the next step.
+### Retained release-head versions
+
+`entailment_release_retention` closes the cooperating-filesystem deletion gap by first verifying the
+signed anchor and its complete log, then writing the canonical anchor to a content-addressed S3 key.
+The write requires a caller-supplied SHA-256 checksum, an exact expected bucket owner, SSE-KMS with a
+full key ARN, and Object Lock `COMPLIANCE` mode. The adapter rejects a missing version ID or any
+checksum/encryption mismatch and reads retention back for that exact version:
+
+```python
+from src.entailment_release_retention import retain_verified_release_head_anchor
+
+receipt = retain_verified_release_head_anchor(
+    s3_client,
+    anchor,
+    payload,
+    public_keys={"release-anchor-2026-q4": kms_public_key_der},
+    expected_source_commit_sha=source_commit,
+    bucket="reviewed-release-anchor-bucket",
+    key_prefix="rag/release-heads",
+    kms_key_arn=kms_key_arn,
+    expected_bucket_owner="123456789012",
+    now_epoch=issued,
+    retain_until_epoch=issued + 90 * 86_400,
+)
+```
+
+The returned receipt preserves the bucket, content-addressed key and immutable version ID needed for
+an independent auditor while hashing the AWS account and KMS key identifiers. Retention is bounded
+to one day through ten years to reduce accidental irreversible configuration. `IfNoneMatch="*"`
+prevents a cooperating publisher from creating another current object at the same digest key.
+
+Compliance mode protects the object *version*, not the object name: an administrator can still add a
+delete marker that hides the current key. Consumers must therefore use the receipt's exact version
+ID, retain the receipt outside the writer's control, and grant a separate auditor only version-read
+and retention-read permissions. A failed readback can occur after S3 accepted the locked version;
+operators should locate that exact content-addressed version rather than blindly retrying.
+
+This adapter is contract-tested, not exercised against a live AWS account. Bucket Object Lock,
+versioning, KMS key policy, retention duration, lifecycle rules and independent receipt storage
+remain deployment responsibilities. The HMAC candidate manifest also remains shared-secret
+authentication; migrating manifest issuance itself to the asymmetric envelope is the next step.
 
 ## Leakage-safe calibration
 
@@ -531,3 +566,4 @@ but do not provide serving-population weights or repeated-look error control. Re
 chosen before evaluation; selecting slices after observing results invalidates the stated error
 budget. A useful next increment is an asymmetric KMS-backed release signer with public verification
 and an append-only transparency log.
+

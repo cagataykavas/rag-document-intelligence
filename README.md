@@ -518,6 +518,7 @@ src/entailment_slice_regression.py paired per-slice bootstrap release gate
 src/entailment_release_manifest.py authenticated candidate release evidence
 src/entailment_release_log.py hash-chained candidate release history with head CAS
 src/entailment_release_anchor.py KMS-compatible asymmetric release-head anchors
+src/entailment_release_retention.py S3 Object Lock retention for verified anchors
 src/retrieval_eval.py  Hit/Recall/Precision/MRR/nDCG metrics
 src/evaluate.py        labelled end-to-end evaluation
 src/conflicts.py       deterministic requirement contradictions
@@ -559,3 +560,4 @@ GitHub Actions runs without an external LLM key and checks:
 ## Interview topics
 
 **RAG · chunking · hybrid retrieval · reranking · Recall@K · Precision@K · MRR · nDCG · zero-shot · one-shot · few-shot · prompt experiments · grounded generation · citation integrity · claim attribution · prompt injection · untrusted documents · evidence provenance · idempotent ingestion · FastAPI · SQLite · Docker · CI.**
+
