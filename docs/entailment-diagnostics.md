@@ -495,16 +495,49 @@ an independent auditor while hashing the AWS account and KMS key identifiers. Re
 to one day through ten years to reduce accidental irreversible configuration. `IfNoneMatch="*"`
 prevents a cooperating publisher from creating another current object at the same digest key.
 
-Compliance mode protects the object *version*, not the object name: an administrator can still add a
-delete marker that hides the current key. Consumers must therefore use the receipt's exact version
-ID, retain the receipt outside the writer's control, and grant a separate auditor only version-read
-and retention-read permissions. A failed readback can occur after S3 accepted the locked version;
-operators should locate that exact content-addressed version rather than blindly retrying.
+Serialize that receipt canonically and give it, the expected anchor digest and the public
+verification material to a read-only auditor operating outside the publisher's trust boundary:
 
-This adapter is contract-tested, not exercised against a live AWS account. Bucket Object Lock,
-versioning, KMS key policy, retention duration, lifecycle rules and independent receipt storage
-remain deployment responsibilities. The HMAC candidate manifest also remains shared-secret
-authentication; migrating manifest issuance itself to the asymmetric envelope is the next step.
+```python
+from src.entailment_release_audit import audit_retained_release_head_anchor
+from src.entailment_release_retention import dump_retained_release_anchor_receipt
+
+audit = audit_retained_release_head_anchor(
+    audit_s3_client,
+    dump_retained_release_anchor_receipt(receipt),
+    payload,
+    public_keys={"release-anchor-2026-q4": kms_public_key_der},
+    expected_source_commit_sha=source_commit,
+    expected_anchor_sha256=anchor.anchor_sha256,
+    expected_bucket="reviewed-release-anchor-bucket",
+    expected_key_prefix="rag/release-heads",
+    expected_kms_key_arn=kms_key_arn,
+    expected_bucket_owner="123456789012",
+    audit_at_epoch=audit_time,
+)
+```
+
+The auditor loads only canonical, bounded receipts and asks S3 for the receipt's exact `VersionId`
+with checksum calculation enabled. It bounds and closes the response stream; checks content length,
+SHA-256, content type, writer metadata, bucket owner and the exact KMS key; parses the canonical
+anchor; and authenticates its Ed25519 signature against the expected release log and source commit.
+It then reads Object Lock retention for the same version and requires `COMPLIANCE` mode through at
+least the receipt's promised time and beyond the audit instant. Provider diagnostics are replaced by
+stable errors, while the returned result contains no raw account or KMS identifiers.
+
+Compliance mode protects the object *version*, not the object name: an administrator can still add a
+delete marker that hides the current key. The auditor therefore never resolves the current key. Keep
+the receipt and expected anchor digest outside the writer's control, and grant the auditor only
+version-read, retention-read and required KMS decrypt permissions. A failed readback can occur after
+S3 accepted the locked version; operators should locate that exact content-addressed version rather
+than blindly retrying.
+
+These adapters are contract-tested, not exercised against a live AWS account. Bucket Object Lock,
+versioning, KMS key policy, retention duration, lifecycle rules, protected receipt storage and the
+auditor's independent deployment remain operator responsibilities. A protected non-production AWS
+write/readback canary is the next deployment step. The HMAC candidate manifest also remains
+shared-secret authentication; migrating manifest issuance itself to the asymmetric envelope remains
+a separate protocol change.
 
 ## Leakage-safe calibration
 

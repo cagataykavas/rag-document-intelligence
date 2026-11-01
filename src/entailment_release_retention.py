@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import re
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
@@ -26,6 +27,22 @@ _KMS_KEY_ARN_RE = re.compile(
     r"arn:(?:aws|aws-us-gov|aws-cn):kms:[a-z0-9-]{1,32}:[0-9]{12}:"
     r"key/[A-Za-z0-9-]{1,128}"
 )
+_DIGEST_RE = re.compile(r"[0-9a-f]{64}")
+_OBJECT_KEY_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/+=-]{0,1023}")
+_MAX_RECEIPT_BYTES = 8_192
+_RECEIPT_FIELDS = {
+    "anchor_sha256",
+    "bucket",
+    "checksum_sha256",
+    "expected_bucket_owner_sha256",
+    "head_sha256",
+    "kms_key_id_sha256",
+    "object_key",
+    "retain_until_epoch",
+    "retention_mode",
+    "schema_version",
+    "version_id",
+}
 
 
 class ReleaseAnchorRetentionError(ValueError):
@@ -54,6 +71,96 @@ class RetainedReleaseAnchorReceipt:
 
     def to_audit_dict(self) -> dict[str, object]:
         return asdict(self)
+
+
+def _canonical_receipt_json(value: object) -> bytes:
+    try:
+        return json.dumps(
+            value,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("ascii")
+    except (TypeError, ValueError, UnicodeEncodeError) as exc:
+        raise ReleaseAnchorRetentionError("receipt is not canonical JSON") from exc
+
+
+def _reject_receipt_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ReleaseAnchorRetentionError("receipt contains a duplicate field")
+        result[key] = value
+    return result
+
+
+def _validate_receipt_document(document: Mapping[str, object]) -> None:
+    if set(document) != _RECEIPT_FIELDS:
+        raise ReleaseAnchorRetentionError("receipt fields do not match the schema")
+    _validate_bucket(document["bucket"])
+    if (
+        document["schema_version"] != RETAINED_RELEASE_ANCHOR_SCHEMA_VERSION
+        or document["retention_mode"] != _RETENTION_MODE
+        or not isinstance(document["object_key"], str)
+        or _OBJECT_KEY_RE.fullmatch(document["object_key"]) is None
+        or ".." in document["object_key"]
+        or "//" in document["object_key"]
+        or not isinstance(document["version_id"], str)
+        or _VERSION_ID_RE.fullmatch(document["version_id"]) is None
+        or type(document["retain_until_epoch"]) is not int
+        or not 1 <= document["retain_until_epoch"] <= 253_402_300_799
+        or any(
+            not isinstance(document[field], str)
+            or _DIGEST_RE.fullmatch(document[field]) is None
+            for field in (
+                "anchor_sha256",
+                "head_sha256",
+                "checksum_sha256",
+                "kms_key_id_sha256",
+                "expected_bucket_owner_sha256",
+            )
+        )
+    ):
+        raise ReleaseAnchorRetentionError("receipt fields are malformed")
+
+
+def dump_retained_release_anchor_receipt(
+    receipt: RetainedReleaseAnchorReceipt,
+) -> bytes:
+    """Serialize a retention receipt into its bounded canonical form."""
+
+    if not isinstance(receipt, RetainedReleaseAnchorReceipt):
+        raise TypeError("receipt must be a RetainedReleaseAnchorReceipt")
+    document = receipt.to_audit_dict()
+    _validate_receipt_document(document)
+    payload = _canonical_receipt_json(document)
+    if len(payload) > _MAX_RECEIPT_BYTES:
+        raise ReleaseAnchorRetentionError("receipt exceeds the size limit")
+    return payload
+
+
+def load_retained_release_anchor_receipt(
+    payload: bytes,
+) -> RetainedReleaseAnchorReceipt:
+    """Load a canonical receipt, rejecting ambiguous or oversized JSON."""
+
+    if not isinstance(payload, bytes) or not 1 <= len(payload) <= _MAX_RECEIPT_BYTES:
+        raise ReleaseAnchorRetentionError("receipt payload size is invalid")
+    try:
+        document = json.loads(
+            payload.decode("ascii"), object_pairs_hook=_reject_receipt_duplicates
+        )
+    except ReleaseAnchorRetentionError:
+        raise
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ReleaseAnchorRetentionError("receipt is not valid JSON") from exc
+    if not isinstance(document, Mapping):
+        raise ReleaseAnchorRetentionError("receipt must be a JSON object")
+    _validate_receipt_document(document)
+    if _canonical_receipt_json(dict(document)) != payload:
+        raise ReleaseAnchorRetentionError("receipt is not canonical JSON")
+    return RetainedReleaseAnchorReceipt(**document)
 
 
 def _validate_bucket(bucket: str) -> None:
