@@ -58,6 +58,59 @@ def test_ranked_retrieval_metrics_include_mrr_and_ndcg():
     assert 0.0 < metrics.ndcg_at_k < 1.0
 
 
+def test_duplicate_chunks_from_one_relevant_document_receive_credit_once():
+    cases = [RetrievalCase("query", frozenset({"policy"}))]
+    rankings = [
+        [
+            {"doc_id": "policy", "chunk_id": "policy:0"},
+            {"doc_id": "policy", "chunk_id": "policy:1"},
+            {"doc_id": "policy", "chunk_id": "policy:2"},
+        ]
+    ]
+
+    metrics = evaluate_rankings(rankings, cases, k=3)
+
+    assert metrics.hit_rate_at_k == pytest.approx(1.0)
+    assert metrics.recall_at_k == pytest.approx(1.0)
+    assert metrics.precision_at_k == pytest.approx(1 / 3)
+    assert metrics.mean_reciprocal_rank == pytest.approx(1.0)
+    assert metrics.ndcg_at_k == pytest.approx(1.0)
+
+
+def test_duplicate_chunk_consumes_rank_before_a_second_relevant_document():
+    cases = [RetrievalCase("query", frozenset({"policy", "runbook"}))]
+    rankings = [
+        [
+            {"doc_id": "policy", "chunk_id": "policy:0"},
+            {"doc_id": "policy", "chunk_id": "policy:1"},
+            {"doc_id": "runbook", "chunk_id": "runbook:0"},
+        ]
+    ]
+
+    metrics = evaluate_rankings(rankings, cases, k=3)
+
+    assert metrics.recall_at_k == pytest.approx(1.0)
+    assert metrics.precision_at_k == pytest.approx(2 / 3)
+    assert metrics.mean_reciprocal_rank == pytest.approx(1.0)
+    assert 0.0 < metrics.ndcg_at_k < 1.0
+
+
+def test_document_level_retrieval_metrics_remain_bounded_with_duplicate_chunks():
+    cases = [RetrievalCase("query", frozenset({"policy"}))]
+    rankings = [[{"doc_id": "policy"} for _ in range(20)]]
+
+    metrics = evaluate_rankings(rankings, cases, k=20)
+
+    for value in (
+        metrics.hit_rate_at_k,
+        metrics.recall_at_k,
+        metrics.precision_at_k,
+        metrics.mean_reciprocal_rank,
+        metrics.ndcg_at_k,
+    ):
+        assert 0.0 <= value <= 1.0
+
+
 def test_engine_fails_closed_on_rejected_llm_citations(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -97,3 +150,4 @@ def test_engine_fails_closed_on_rejected_llm_citations(
     assert answer.rejected_citations == ("fabricated:404",)
     assert answer.citation_audit["citations"] == ()
     assert "citation_not_allowed" in answer.generation_admission["reasons"]
+

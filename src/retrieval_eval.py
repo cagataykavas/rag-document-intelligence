@@ -52,7 +52,16 @@ def evaluate_rankings(
             raise ValueError("every retrieval case must contain at least one relevant document")
         top = results[:k]
         retrieved_ids = [str(item["doc_id"]) for item in top]
-        relevance = [int(doc_id in case.relevant_doc_ids) for doc_id in retrieved_ids]
+        credited_relevant_ids: set[str] = set()
+        relevance: list[int] = []
+        for doc_id in retrieved_ids:
+            first_relevant_occurrence = (
+                doc_id in case.relevant_doc_ids
+                and doc_id not in credited_relevant_ids
+            )
+            relevance.append(int(first_relevant_occurrence))
+            if first_relevant_occurrence:
+                credited_relevant_ids.add(doc_id)
         relevant_retrieved = sum(relevance)
 
         hits.append(float(relevant_retrieved > 0))
@@ -79,3 +88,4 @@ def evaluate_rankings(
         mean_reciprocal_rank=mean(reciprocal_ranks),
         ndcg_at_k=mean(ndcgs),
     )
+
