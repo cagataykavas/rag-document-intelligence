@@ -455,6 +455,11 @@ Ranked retrieval metrics:
 - **Mean Reciprocal Rank**
 - **nDCG@K**
 
+Relevance labels are document-level even though retrieval returns chunks. The evaluator therefore
+credits only the first ranked chunk from each relevant document; later chunks from that document
+still consume rank positions but cannot inflate Recall@K, Precision@K, or nDCG@K above their
+document-level meaning.
+
 End-to-end deterministic metrics:
 
 - cited-document accuracy;
@@ -519,7 +524,6 @@ src/entailment_release_manifest.py authenticated candidate release evidence
 src/entailment_release_log.py hash-chained candidate release history with head CAS
 src/entailment_release_anchor.py KMS-compatible asymmetric release-head anchors
 src/entailment_release_retention.py S3 Object Lock retention for verified anchors
-src/entailment_release_audit.py read-only exact-version retained-anchor auditing
 src/retrieval_eval.py  Hit/Recall/Precision/MRR/nDCG metrics
 src/evaluate.py        labelled end-to-end evaluation
 src/conflicts.py       deterministic requirement contradictions
