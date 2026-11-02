@@ -28,6 +28,9 @@ class EvalMetrics:
     precision_at_k: float
     mean_reciprocal_rank: float
     ndcg_at_k: float
+    mean_unique_documents_at_k: float
+    duplicate_document_rate_at_k: float
+    mean_largest_document_share_at_k: float
     citation_doc_accuracy: float
     citation_validity_rate: float
     lexical_grounding_rate: float
@@ -67,12 +70,29 @@ def evaluate(
         citation_validity.append(float(answer.citation_audit["citation_validity_rate"]))
         grounding_rates.append(float(answer.citation_audit["lexical_grounding_rate"]))
         if case.expected_phrase:
-            phrase_matches.append(float(case.expected_phrase.lower() in answer.answer.lower()))
+            phrase_matches.append(
+                float(case.expected_phrase.lower() in answer.answer.lower())
+            )
         else:
             phrase_matches.append(1.0)
 
     if not cases:
-        return EvalMetrics(0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        return EvalMetrics(
+            cases=0,
+            hit_rate_at_k=0.0,
+            recall_at_k=0.0,
+            precision_at_k=0.0,
+            mean_reciprocal_rank=0.0,
+            ndcg_at_k=0.0,
+            mean_unique_documents_at_k=0.0,
+            duplicate_document_rate_at_k=0.0,
+            mean_largest_document_share_at_k=0.0,
+            citation_doc_accuracy=0.0,
+            citation_validity_rate=0.0,
+            lexical_grounding_rate=0.0,
+            answer_phrase_accuracy=0.0,
+            average_latency_ms=0.0,
+        )
 
     retrieval_metrics = evaluate_rankings(rankings, retrieval_cases, k=k)
     return EvalMetrics(
@@ -82,6 +102,11 @@ def evaluate(
         precision_at_k=retrieval_metrics.precision_at_k,
         mean_reciprocal_rank=retrieval_metrics.mean_reciprocal_rank,
         ndcg_at_k=retrieval_metrics.ndcg_at_k,
+        mean_unique_documents_at_k=(retrieval_metrics.mean_unique_documents_at_k),
+        duplicate_document_rate_at_k=(retrieval_metrics.duplicate_document_rate_at_k),
+        mean_largest_document_share_at_k=(
+            retrieval_metrics.mean_largest_document_share_at_k
+        ),
         citation_doc_accuracy=mean(citation_matches),
         citation_validity_rate=mean(citation_validity),
         lexical_grounding_rate=mean(grounding_rates),

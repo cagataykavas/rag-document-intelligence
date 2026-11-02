@@ -75,6 +75,9 @@ def test_duplicate_chunks_from_one_relevant_document_receive_credit_once():
     assert metrics.precision_at_k == pytest.approx(1 / 3)
     assert metrics.mean_reciprocal_rank == pytest.approx(1.0)
     assert metrics.ndcg_at_k == pytest.approx(1.0)
+    assert metrics.mean_unique_documents_at_k == pytest.approx(1.0)
+    assert metrics.duplicate_document_rate_at_k == pytest.approx(2 / 3)
+    assert metrics.mean_largest_document_share_at_k == pytest.approx(1.0)
 
 
 def test_duplicate_chunk_consumes_rank_before_a_second_relevant_document():
@@ -109,6 +112,55 @@ def test_document_level_retrieval_metrics_remain_bounded_with_duplicate_chunks()
         metrics.ndcg_at_k,
     ):
         assert 0.0 <= value <= 1.0
+
+
+def test_source_saturation_diagnostics_include_irrelevant_documents():
+    cases = [RetrievalCase("query", frozenset({"relevant"}))]
+    rankings = [
+        [
+            {"doc_id": "a", "chunk_id": "a:0"},
+            {"doc_id": "a", "chunk_id": "a:1"},
+            {"doc_id": "b", "chunk_id": "b:0"},
+            {"doc_id": "b", "chunk_id": "b:1"},
+            {"doc_id": "c", "chunk_id": "c:0"},
+        ]
+    ]
+
+    metrics = evaluate_rankings(rankings, cases, k=5)
+
+    assert metrics.mean_unique_documents_at_k == pytest.approx(3.0)
+    assert metrics.duplicate_document_rate_at_k == pytest.approx(2 / 5)
+    assert metrics.mean_largest_document_share_at_k == pytest.approx(2 / 5)
+
+
+@pytest.mark.parametrize(
+    ("ranking", "unique_documents", "duplicate_rate", "largest_share"),
+    [
+        ([], 0.0, 0.0, 0.0),
+        ([{"doc_id": "only"}], 1.0, 0.0, 1.0),
+        (
+            [{"doc_id": "a"}, {"doc_id": "b"}, {"doc_id": "c"}],
+            3.0,
+            0.0,
+            1 / 3,
+        ),
+    ],
+)
+def test_source_saturation_uses_observed_slots_for_short_rankings(
+    ranking: list[dict],
+    unique_documents: float,
+    duplicate_rate: float,
+    largest_share: float,
+) -> None:
+    metrics = evaluate_rankings(
+        [ranking],
+        [RetrievalCase("query", frozenset({"relevant"}))],
+        k=5,
+    )
+
+    assert metrics.mean_unique_documents_at_k == pytest.approx(unique_documents)
+    assert metrics.duplicate_document_rate_at_k == pytest.approx(duplicate_rate)
+    assert metrics.mean_largest_document_share_at_k == pytest.approx(largest_share)
 
 
 def test_engine_fails_closed_on_rejected_llm_citations(
@@ -150,4 +202,3 @@ def test_engine_fails_closed_on_rejected_llm_citations(
     assert answer.rejected_citations == ("fabricated:404",)
     assert answer.citation_audit["citations"] == ()
     assert "citation_not_allowed" in answer.generation_admission["reasons"]
-

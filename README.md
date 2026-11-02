@@ -455,10 +455,21 @@ Ranked retrieval metrics:
 - **Mean Reciprocal Rank**
 - **nDCG@K**
 
+Source-coverage diagnostics:
+
+- **Mean unique documents@K** — distinct sources represented in each returned top-K;
+- **Duplicate-document rate@K** — returned slots beyond the first chunk from each source, divided
+  by observed slots;
+- **Mean largest-document share@K** — the fraction of observed slots occupied by the most common
+  source.
+
 Relevance labels are document-level even though retrieval returns chunks. The evaluator therefore
 credits only the first ranked chunk from each relevant document; later chunks from that document
 still consume rank positions but cannot inflate Recall@K, Precision@K, or nDCG@K above their
-document-level meaning.
+document-level meaning. The source-coverage diagnostics are relevance-independent: irrelevant
+documents count too, making within-source saturation visible without changing retrieval or credit.
+Rates use observed returned slots, while Precision@K retains its configured-K denominator; a short
+ranking is therefore not mislabeled as duplicate-heavy.
 
 End-to-end deterministic metrics:
 
@@ -524,7 +535,7 @@ src/entailment_release_manifest.py authenticated candidate release evidence
 src/entailment_release_log.py hash-chained candidate release history with head CAS
 src/entailment_release_anchor.py KMS-compatible asymmetric release-head anchors
 src/entailment_release_retention.py S3 Object Lock retention for verified anchors
-src/retrieval_eval.py  Hit/Recall/Precision/MRR/nDCG metrics
+src/retrieval_eval.py  relevance metrics + top-K source saturation diagnostics
 src/evaluate.py        labelled end-to-end evaluation
 src/conflicts.py       deterministic requirement contradictions
 src/engine.py          retrieval → policy → evidence → generation orchestration
@@ -565,4 +576,5 @@ GitHub Actions runs without an external LLM key and checks:
 ## Interview topics
 
 **RAG · chunking · hybrid retrieval · reranking · Recall@K · Precision@K · MRR · nDCG · zero-shot · one-shot · few-shot · prompt experiments · grounded generation · citation integrity · claim attribution · prompt injection · untrusted documents · evidence provenance · idempotent ingestion · FastAPI · SQLite · Docker · CI.**
+
 
