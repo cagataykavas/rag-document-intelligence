@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import asdict, dataclass
 from math import log2
 from statistics import mean
@@ -19,6 +20,9 @@ class RetrievalMetrics:
     precision_at_k: float
     mean_reciprocal_rank: float
     ndcg_at_k: float
+    mean_unique_documents_at_k: float
+    duplicate_document_rate_at_k: float
+    mean_largest_document_share_at_k: float
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -39,25 +43,50 @@ def evaluate_rankings(
     if k < 1:
         raise ValueError("k must be positive")
     if not cases:
-        return RetrievalMetrics(0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        return RetrievalMetrics(
+            cases=0,
+            hit_rate_at_k=0.0,
+            recall_at_k=0.0,
+            precision_at_k=0.0,
+            mean_reciprocal_rank=0.0,
+            ndcg_at_k=0.0,
+            mean_unique_documents_at_k=0.0,
+            duplicate_document_rate_at_k=0.0,
+            mean_largest_document_share_at_k=0.0,
+        )
 
     hits: list[float] = []
     recalls: list[float] = []
     precisions: list[float] = []
     reciprocal_ranks: list[float] = []
     ndcgs: list[float] = []
+    unique_document_counts: list[float] = []
+    duplicate_document_rates: list[float] = []
+    largest_document_shares: list[float] = []
 
     for results, case in zip(ranked_results, cases, strict=True):
         if not case.relevant_doc_ids:
-            raise ValueError("every retrieval case must contain at least one relevant document")
+            raise ValueError(
+                "every retrieval case must contain at least one relevant document"
+            )
         top = results[:k]
         retrieved_ids = [str(item["doc_id"]) for item in top]
+        document_counts = Counter(retrieved_ids)
+        observed_slots = len(retrieved_ids)
+        unique_document_counts.append(float(len(document_counts)))
+        duplicate_document_rates.append(
+            (observed_slots - len(document_counts)) / observed_slots
+            if observed_slots
+            else 0.0
+        )
+        largest_document_shares.append(
+            max(document_counts.values()) / observed_slots if observed_slots else 0.0
+        )
         credited_relevant_ids: set[str] = set()
         relevance: list[int] = []
         for doc_id in retrieved_ids:
             first_relevant_occurrence = (
-                doc_id in case.relevant_doc_ids
-                and doc_id not in credited_relevant_ids
+                doc_id in case.relevant_doc_ids and doc_id not in credited_relevant_ids
             )
             relevance.append(int(first_relevant_occurrence))
             if first_relevant_occurrence:
@@ -87,5 +116,7 @@ def evaluate_rankings(
         precision_at_k=mean(precisions),
         mean_reciprocal_rank=mean(reciprocal_ranks),
         ndcg_at_k=mean(ndcgs),
+        mean_unique_documents_at_k=mean(unique_document_counts),
+        duplicate_document_rate_at_k=mean(duplicate_document_rates),
+        mean_largest_document_share_at_k=mean(largest_document_shares),
     )
-
