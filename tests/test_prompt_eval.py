@@ -43,3 +43,15 @@ def test_invalid_generator_schema_is_scored_not_crashed():
     result = evaluate_prompt_modes([case], lambda _prompt: {"answer": "missing fields"})
     assert result["zero_shot"]["schema_validity_rate"] == 0.0
     assert result["zero_shot"]["citation_validity_rate"] == 0.0
+
+
+def test_non_object_generator_payload_is_scored_as_invalid_schema():
+    case = PromptEvalCase(
+        question="Question?",
+        evidence=(EvidenceSnippet("c:1", "demo", "Evidence."),),
+    )
+
+    for malformed in (None, [], "not-json-object"):
+        result = evaluate_prompt_modes([case], lambda _prompt, value=malformed: value)
+        assert all(row["schema_validity_rate"] == 0.0 for row in result.values())
+        assert all(row["citation_validity_rate"] == 0.0 for row in result.values())

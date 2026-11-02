@@ -7,7 +7,7 @@ from typing import Callable
 
 from src.prompting import EvidenceSnippet, PromptMode, build_prompt
 
-Generator = Callable[[str], dict]
+Generator = Callable[[str], object]
 
 
 @dataclass(frozen=True)
@@ -32,7 +32,9 @@ class PromptModeMetrics:
         return asdict(self)
 
 
-def _schema_valid(payload: dict) -> bool:
+def _schema_valid(payload: object) -> bool:
+    if not isinstance(payload, dict):
+        return False
     required = {"answer", "citations", "confidence", "insufficient_evidence"}
     if not required.issubset(payload):
         return False

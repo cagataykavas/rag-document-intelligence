@@ -36,6 +36,11 @@ def test_inline_ingest_and_query() -> None:
         payload = query.json()
         assert payload["citations"]
         assert payload["generator"] == "extractive"
+        assert payload["citation_audit"]["citation_validity_rate"] == 1.0
+        assert payload["claim_support"]
+        assert payload["claim_support"][0]["best_chunk_id"] in payload["citations"]
+        assert "supported_tokens" in payload["claim_support"][0]
+        assert payload["evidence_policy"] == []
 
 
 def test_conflict_endpoint() -> None:
