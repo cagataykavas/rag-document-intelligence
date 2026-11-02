@@ -471,6 +471,13 @@ documents count too, making within-source saturation visible without changing re
 Rates use observed returned slots, while Precision@K retains its configured-K denominator; a short
 ranking is therefore not mislabeled as duplicate-heavy.
 
+`src/retrieval_baseline.py` can seal an accepted result with its exact K, case count,
+corpus/evaluation commitments, source commit, and one reviewed regression tolerance per metric.
+Candidate comparisons fail closed on identity drift and apply the correct direction to coverage
+and saturation metrics. Reports retain aggregate values and hashes only. See
+[`docs/retrieval-regression-gate.md`](docs/retrieval-regression-gate.md) for the contract and its
+statistical boundary.
+
 End-to-end deterministic metrics:
 
 - cited-document accuracy;
@@ -536,6 +543,7 @@ src/entailment_release_log.py hash-chained candidate release history with head C
 src/entailment_release_anchor.py KMS-compatible asymmetric release-head anchors
 src/entailment_release_retention.py S3 Object Lock retention for verified anchors
 src/retrieval_eval.py  relevance metrics + top-K source saturation diagnostics
+src/retrieval_baseline.py content-addressed retrieval regression baseline and gate
 src/evaluate.py        labelled end-to-end evaluation
 src/conflicts.py       deterministic requirement contradictions
 src/engine.py          retrieval → policy → evidence → generation orchestration
