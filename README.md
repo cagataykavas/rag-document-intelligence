@@ -475,8 +475,9 @@ ranking is therefore not mislabeled as duplicate-heavy.
 corpus/evaluation commitments, source commit, and one reviewed regression tolerance per metric.
 Candidate comparisons fail closed on identity drift and apply the correct direction to coverage
 and saturation metrics. `src/retrieval_gate.py` computes those commitments from a canonical case
-file and one consistent read-only SQLite snapshot, evaluates that exact snapshot, and exits
-nonzero when CI policy fails. Reports retain aggregate values and hashes only. See
+file and one consistent read-only SQLite snapshot, requires that snapshot to match a reviewed
+source/content inventory, evaluates the exact rows, and exits nonzero when CI policy fails. Reports
+retain aggregate values and hashes only. See
 [`docs/retrieval-regression-gate.md`](docs/retrieval-regression-gate.md) for the contract and its
 statistical boundary.
 
@@ -546,7 +547,7 @@ src/entailment_release_anchor.py KMS-compatible asymmetric release-head anchors
 src/entailment_release_retention.py S3 Object Lock retention for verified anchors
 src/retrieval_eval.py  relevance metrics + top-K source saturation diagnostics
 src/retrieval_baseline.py content-addressed retrieval regression baseline and gate
-src/retrieval_gate.py   canonical corpus/case snapshot evaluator and CI gate command
+src/retrieval_gate.py   reviewed-inventory corpus/case evaluator and CI gate command
 src/evaluate.py        labelled end-to-end evaluation
 src/conflicts.py       deterministic requirement contradictions
 src/engine.py          retrieval → policy → evidence → generation orchestration
