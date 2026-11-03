@@ -18,5 +18,16 @@ jobs:
       - run: pip install -r requirements.txt
       - run: ruff check src app tests
       - run: pytest -q
+      - name: Gate canonical retrieval snapshot
+        run: |
+          python -m src.cli \
+            --database "${RUNNER_TEMP}/retrieval-gate.db" \
+            ingest tests/fixtures/retrieval_gate/corpus \
+            --words-per-chunk 4 \
+            --overlap 0 >/dev/null
+          python -m src.retrieval_gate \
+            --database "${RUNNER_TEMP}/retrieval-gate.db" \
+            --cases tests/fixtures/retrieval_gate/cases.json \
+            --baseline tests/fixtures/retrieval_gate/baseline.json
       - run: docker compose config
       - run: docker build -t rag-document-intelligence:test .
