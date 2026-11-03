@@ -28,6 +28,7 @@ jobs:
           python -m src.retrieval_gate \
             --database "${RUNNER_TEMP}/retrieval-gate.db" \
             --cases tests/fixtures/retrieval_gate/cases.json \
+            --inventory tests/fixtures/retrieval_gate/source_inventory.json \
             --baseline tests/fixtures/retrieval_gate/baseline.json
       - run: docker compose config
       - run: docker build -t rag-document-intelligence:test .

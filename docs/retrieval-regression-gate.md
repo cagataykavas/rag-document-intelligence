@@ -11,6 +11,7 @@ applies that gate in one command. Neither module can silently tune or replace ra
 python -m src.retrieval_gate \
   --database data/rag.db \
   --cases evaluation/retrieval-cases.json \
+  --inventory evaluation/retrieval-source-inventory.json \
   --baseline evaluation/retrieval-baseline.json
 ```
 
@@ -29,6 +30,20 @@ Cases must be sorted by `case_id`; relevant document IDs must be sorted and uniq
 loader rejects duplicate JSON keys, missing or extra fields, noncanonical serialization,
 invalid identifiers, empty labels, and files over 1 MiB. These constraints make the case
 commitment reproducible across machines and keep labels reviewable in version control.
+
+The source inventory is a second canonical artifact containing the exact source identifier and
+normalized-content SHA-256 expected for every indexed document:
+
+```json
+{"schema_version":"retrieval-source-inventory/v1","sources":[{"content_sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","source":"policies/retention.md"}]}
+```
+
+Rows must be sorted by `(source, content_sha256)`. Content digests must be unique, matching the
+store's content-addressed admission rule. The gate compares this reviewed population to every
+document row inside the same read transaction used for corpus hashing and evaluation. A missing,
+unexpected, renamed, or content-substituted source therefore fails before retrieval runs. The
+inventory is bounded to 4 MiB and rejects duplicate keys, duplicate content identities, malformed
+UTF-8, noncanonical JSON, unsupported schemas, and more than 100,000 sources.
 
 ## What the baseline binds
 
@@ -111,22 +126,24 @@ The command opens SQLite read-only, enables `query_only`, starts one transaction
 runs `PRAGMA quick_check`. Within that same consistent read snapshot it:
 
 1. validates the required `documents` and `chunks` schema and bounded row counts;
-2. streams every document in `doc_id` order into a domain-separated SHA-256 digest;
-3. streams every chunk in `(doc_id, ordinal, chunk_id)` order, committing all provenance
+2. requires the exact reviewed source/content inventory, without emitting source names;
+3. streams every document in `doc_id` order into a domain-separated SHA-256 digest;
+4. streams every chunk in `(doc_id, ordinal, chunk_id)` order, committing all provenance
    fields and a SHA-256 of text rather than text itself;
-4. rejects incomplete provenance, duplicate IDs, orphan chunks, and labels for documents
+5. rejects incomplete provenance, duplicate IDs, orphan chunks, and labels for documents
    absent from the snapshot; and
-5. fits and evaluates the sparse hybrid retriever from those exact chunk rows.
+6. fits and evaluates the sparse hybrid retriever from those exact chunk rows.
 
 Length-framed canonical records avoid concatenation ambiguity. The candidate artifact
-commits to K, row counts, case count, both snapshot digests, and all aggregate metrics.
+commits to K, row counts, case count, the corpus, case and reviewed-inventory commitments,
+and all aggregate metrics.
 The checked-in CI fixture demonstrates the complete ingest-to-gate path rather than
 comparing hand-entered metrics.
 
 ## Security and statistical boundary
 
-The snapshot covers the rows visible in the supplied SQLite database; it cannot prove
-that upstream ingestion discovered every intended source or that labels are correct.
+The snapshot proves completeness only relative to the reviewed inventory. It cannot prove that the
+inventory's source selection is authoritative, current, or exhaustive, nor that labels are correct.
 The current gate compares point estimates and is appropriate for deterministic
 evaluation. It does not estimate uncertainty, correct for repeated tuning, or prove
 semantic diversity, source authority, answer quality, or production traffic performance.

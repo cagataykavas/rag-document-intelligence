@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -22,9 +23,11 @@ from src.retrieval_baseline import (
 from src.retrieval_eval import RetrievalCase, RetrievalMetrics, evaluate_rankings
 
 CASE_SCHEMA_VERSION = "retrieval-evaluation-cases/v1"
-SNAPSHOT_SCHEMA_VERSION = "retrieval-candidate-snapshot/v1"
-GATE_SCHEMA_VERSION = "retrieval-snapshot-gate/v1"
+INVENTORY_SCHEMA_VERSION = "retrieval-source-inventory/v1"
+SNAPSHOT_SCHEMA_VERSION = "retrieval-candidate-snapshot/v2"
+GATE_SCHEMA_VERSION = "retrieval-snapshot-gate/v2"
 MAX_CASE_BYTES = 1_048_576
+MAX_INVENTORY_BYTES = 4_194_304
 MAX_BASELINE_BYTES = 65_536
 MAX_CASES = 10_000
 MAX_DOCUMENTS = 100_000
@@ -49,6 +52,12 @@ class CanonicalRetrievalCase:
 
 
 @dataclass(frozen=True, slots=True)
+class ExpectedSource:
+    source: str
+    content_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
 class RetrievalCandidateSnapshot:
     schema_version: str
     k: int
@@ -57,6 +66,7 @@ class RetrievalCandidateSnapshot:
     case_count: int
     corpus_snapshot_sha256: str
     evaluation_cases_sha256: str
+    source_inventory_sha256: str
     metrics: RetrievalMetrics
     artifact_sha256: str
 
@@ -74,6 +84,7 @@ class RetrievalSnapshotGateReceipt:
     document_count: int
     chunk_count: int
     case_count: int
+    source_inventory_sha256: str
     meets_policy: bool
     failure_reasons: tuple[str, ...]
 
@@ -93,6 +104,56 @@ def _canonical_json(value: object) -> bytes:
 
 def _domain_sha256(domain: bytes, value: object) -> str:
     return hashlib.sha256(domain + b"\0" + _canonical_json(value)).hexdigest()
+
+
+def _candidate_snapshot_document(
+    snapshot: RetrievalCandidateSnapshot,
+) -> dict[str, object]:
+    return {
+        "schema_version": snapshot.schema_version,
+        "k": snapshot.k,
+        "document_count": snapshot.document_count,
+        "chunk_count": snapshot.chunk_count,
+        "case_count": snapshot.case_count,
+        "corpus_snapshot_sha256": snapshot.corpus_snapshot_sha256,
+        "evaluation_cases_sha256": snapshot.evaluation_cases_sha256,
+        "source_inventory_sha256": snapshot.source_inventory_sha256,
+        "metrics": asdict(snapshot.metrics),
+    }
+
+
+def _validate_candidate_snapshot(snapshot: RetrievalCandidateSnapshot) -> None:
+    if (
+        snapshot.schema_version != SNAPSHOT_SCHEMA_VERSION
+        or type(snapshot.k) is not int
+        or not 1 <= snapshot.k <= 1_000
+        or type(snapshot.document_count) is not int
+        or not 1 <= snapshot.document_count <= MAX_DOCUMENTS
+        or type(snapshot.chunk_count) is not int
+        or not 1 <= snapshot.chunk_count <= MAX_CHUNKS
+        or type(snapshot.case_count) is not int
+        or not 1 <= snapshot.case_count <= MAX_CASES
+        or not isinstance(snapshot.metrics, RetrievalMetrics)
+        or snapshot.metrics.cases != snapshot.case_count
+    ):
+        raise RetrievalSnapshotError("candidate_snapshot_invalid")
+    for digest in (
+        snapshot.corpus_snapshot_sha256,
+        snapshot.evaluation_cases_sha256,
+        snapshot.source_inventory_sha256,
+        snapshot.artifact_sha256,
+    ):
+        if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            raise RetrievalSnapshotError("candidate_snapshot_invalid")
+    try:
+        expected = _domain_sha256(
+            b"retrieval-candidate-snapshot/v2",
+            _candidate_snapshot_document(snapshot),
+        )
+    except (TypeError, ValueError, UnicodeEncodeError) as exc:
+        raise RetrievalSnapshotError("candidate_snapshot_invalid") from exc
+    if not hmac.compare_digest(snapshot.artifact_sha256, expected):
+        raise RetrievalSnapshotError("candidate_snapshot_digest_mismatch")
 
 
 def _read_regular_file(path: Path, maximum: int, code: str) -> bytes:
@@ -116,7 +177,9 @@ def _read_regular_file(path: Path, maximum: int, code: str) -> bytes:
             os.close(descriptor)
 
 
-def load_canonical_cases(payload: bytes) -> tuple[tuple[CanonicalRetrievalCase, ...], str]:
+def load_canonical_cases(
+    payload: bytes,
+) -> tuple[tuple[CanonicalRetrievalCase, ...], str]:
     """Load a bounded canonical case set and return its domain-separated digest."""
 
     if not isinstance(payload, bytes) or not 1 <= len(payload) <= MAX_CASE_BYTES:
@@ -203,6 +266,82 @@ def load_canonical_cases(payload: bytes) -> tuple[tuple[CanonicalRetrievalCase, 
     return tuple(cases), _domain_sha256(b"retrieval-evaluation-cases/v1", expected)
 
 
+def load_canonical_source_inventory(
+    payload: bytes,
+) -> tuple[tuple[ExpectedSource, ...], str]:
+    """Load the exact reviewed source/content population expected in the corpus."""
+
+    if not isinstance(payload, bytes) or not 1 <= len(payload) <= MAX_INVENTORY_BYTES:
+        raise RetrievalSnapshotError("source_inventory_file_invalid")
+
+    def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise RetrievalSnapshotError("source_inventory_duplicate_json_key")
+            result[key] = value
+        return result
+
+    def reject_constant(_value: str) -> object:
+        raise RetrievalSnapshotError("source_inventory_json_invalid")
+
+    try:
+        document = json.loads(
+            payload.decode("utf-8"),
+            object_pairs_hook=unique_object,
+            parse_constant=reject_constant,
+        )
+    except (UnicodeDecodeError, ValueError, RecursionError) as exc:
+        raise RetrievalSnapshotError("source_inventory_json_invalid") from exc
+    if not isinstance(document, dict) or set(document) != {
+        "schema_version",
+        "sources",
+    }:
+        raise RetrievalSnapshotError("source_inventory_schema_invalid")
+    if document["schema_version"] != INVENTORY_SCHEMA_VERSION:
+        raise RetrievalSnapshotError("source_inventory_schema_unsupported")
+    rows = document["sources"]
+    if not isinstance(rows, list) or not 1 <= len(rows) <= MAX_DOCUMENTS:
+        raise RetrievalSnapshotError("source_inventory_count_invalid")
+
+    sources: list[ExpectedSource] = []
+    seen_rows: set[tuple[str, str]] = set()
+    seen_digests: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != {"source", "content_sha256"}:
+            raise RetrievalSnapshotError("source_inventory_row_invalid")
+        source = row["source"]
+        content_sha256 = row["content_sha256"]
+        try:
+            source_size = len(source.encode("utf-8"))
+        except (AttributeError, UnicodeEncodeError):
+            raise RetrievalSnapshotError("source_inventory_row_invalid") from None
+        identity = (source, content_sha256)
+        if (
+            not isinstance(source, str)
+            or not 1 <= source_size <= 4_096
+            or source != source.strip()
+            or "\0" in source
+            or not isinstance(content_sha256, str)
+            or re.fullmatch(r"[0-9a-f]{64}", content_sha256) is None
+            or identity in seen_rows
+            or content_sha256 in seen_digests
+        ):
+            raise RetrievalSnapshotError("source_inventory_row_invalid")
+        seen_rows.add(identity)
+        seen_digests.add(content_sha256)
+        sources.append(ExpectedSource(source, content_sha256))
+    if sources != sorted(sources, key=lambda item: (item.source, item.content_sha256)):
+        raise RetrievalSnapshotError("source_inventory_order_invalid")
+    expected = {
+        "schema_version": INVENTORY_SCHEMA_VERSION,
+        "sources": [asdict(source) for source in sources],
+    }
+    if payload != _canonical_json(expected):
+        raise RetrievalSnapshotError("source_inventory_json_not_canonical")
+    return tuple(sources), _domain_sha256(b"retrieval-source-inventory/v1", expected)
+
+
 def _row_payload(row: sqlite3.Row, names: tuple[str, ...]) -> dict[str, object]:
     payload: dict[str, object] = {}
     for name in names:
@@ -215,6 +354,7 @@ def _row_payload(row: sqlite3.Row, names: tuple[str, ...]) -> dict[str, object]:
 
 def _snapshot_corpus(
     connection: sqlite3.Connection,
+    expected_sources: tuple[ExpectedSource, ...],
 ) -> tuple[str, frozenset[str], list[Chunk], int, int]:
     checks = connection.execute("PRAGMA quick_check").fetchall()
     if [str(row[0]) for row in checks] != ["ok"]:
@@ -255,6 +395,7 @@ def _snapshot_corpus(
 
     digest = hashlib.sha256(b"retrieval-corpus-snapshot/v1\0")
     doc_ids: set[str] = set()
+    observed_sources: set[tuple[str, str]] = set()
     document_names = (
         "doc_id",
         "source",
@@ -273,11 +414,22 @@ def _snapshot_corpus(
         if not all(isinstance(payload[name], str) for name in document_names):
             raise RetrievalSnapshotError("corpus_row_invalid")
         doc_id = str(payload["doc_id"])
-        if _DOCUMENT_ID_RE.fullmatch(doc_id) is None or doc_id in doc_ids:
+        source_identity = (str(payload["source"]), str(payload["content_sha256"]))
+        if (
+            _DOCUMENT_ID_RE.fullmatch(doc_id) is None
+            or doc_id in doc_ids
+            or source_identity in observed_sources
+        ):
             raise RetrievalSnapshotError("corpus_row_invalid")
         doc_ids.add(doc_id)
+        observed_sources.add(source_identity)
         encoded = _canonical_json(payload)
         digest.update(b"D" + len(encoded).to_bytes(8, "big") + encoded)
+    expected_identities = {
+        (source.source, source.content_sha256) for source in expected_sources
+    }
+    if observed_sources != expected_identities:
+        raise RetrievalSnapshotError("source_inventory_mismatch")
 
     chunks: list[Chunk] = []
     chunk_names = (
@@ -326,9 +478,10 @@ def _snapshot_corpus(
             or not text
             or type(ordinal) is not int
             or ordinal < 0
-            or (any(value is None for value in locator_values) and any(
-                value is not None for value in locator_values
-            ))
+            or (
+                any(value is None for value in locator_values)
+                and any(value is not None for value in locator_values)
+            )
         ):
             raise RetrievalSnapshotError("corpus_row_invalid")
         try:
@@ -355,6 +508,7 @@ def _snapshot_corpus(
 def evaluate_candidate_snapshot(
     database: Path,
     cases_payload: bytes,
+    source_inventory_payload: bytes,
     *,
     k: int,
 ) -> RetrievalCandidateSnapshot:
@@ -363,6 +517,9 @@ def evaluate_candidate_snapshot(
     if type(k) is not int or not 1 <= k <= 1_000:
         raise ValueError("k must be an integer in [1, 1000]")
     cases, cases_sha256 = load_canonical_cases(cases_payload)
+    expected_sources, source_inventory_sha256 = load_canonical_source_inventory(
+        source_inventory_payload
+    )
     if database.is_symlink() or not database.is_file():
         raise RetrievalSnapshotError("corpus_database_invalid")
     try:
@@ -380,7 +537,7 @@ def evaluate_candidate_snapshot(
                 chunks,
                 document_count,
                 chunk_count,
-            ) = _snapshot_corpus(connection)
+            ) = _snapshot_corpus(connection, expected_sources)
             if any(
                 relevant not in doc_ids
                 for case in cases
@@ -409,6 +566,7 @@ def evaluate_candidate_snapshot(
         "case_count": len(cases),
         "corpus_snapshot_sha256": corpus_sha256,
         "evaluation_cases_sha256": cases_sha256,
+        "source_inventory_sha256": source_inventory_sha256,
         "metrics": asdict(metrics),
     }
     return RetrievalCandidateSnapshot(
@@ -419,8 +577,9 @@ def evaluate_candidate_snapshot(
         case_count=len(cases),
         corpus_snapshot_sha256=corpus_sha256,
         evaluation_cases_sha256=cases_sha256,
+        source_inventory_sha256=source_inventory_sha256,
         metrics=metrics,
-        artifact_sha256=_domain_sha256(b"retrieval-candidate-snapshot/v1", document),
+        artifact_sha256=_domain_sha256(b"retrieval-candidate-snapshot/v2", document),
     )
 
 
@@ -432,6 +591,7 @@ def gate_candidate_snapshot(
 
     if not isinstance(snapshot, RetrievalCandidateSnapshot):
         raise TypeError("snapshot must be RetrievalCandidateSnapshot")
+    _validate_candidate_snapshot(snapshot)
     baseline = load_retrieval_baseline_json(baseline_payload)
     comparison = compare_retrieval_baseline(
         baseline,
@@ -449,6 +609,7 @@ def gate_candidate_snapshot(
         document_count=snapshot.document_count,
         chunk_count=snapshot.chunk_count,
         case_count=snapshot.case_count,
+        source_inventory_sha256=snapshot.source_inventory_sha256,
         meets_policy=comparison.meets_policy,
         failure_reasons=comparison.failure_reasons,
     )
@@ -461,6 +622,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--cases", type=Path, required=True)
+    parser.add_argument("--inventory", type=Path, required=True)
     parser.add_argument("--baseline", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
@@ -470,15 +632,25 @@ def main(argv: list[str] | None = None) -> int:
         baseline_payload = _read_regular_file(
             args.baseline, MAX_BASELINE_BYTES, "baseline_file_invalid"
         )
+        source_inventory_payload = _read_regular_file(
+            args.inventory,
+            MAX_INVENTORY_BYTES,
+            "source_inventory_file_invalid",
+        )
         baseline = load_retrieval_baseline_json(baseline_payload)
         snapshot = evaluate_candidate_snapshot(
             args.database,
             cases_payload,
+            source_inventory_payload,
             k=baseline.k,
         )
         _, receipt = gate_candidate_snapshot(snapshot, baseline_payload)
     except (RetrievalSnapshotError, RetrievalBaselineError, OSError, ValueError) as exc:
-        code = exc.code if isinstance(exc, RetrievalSnapshotError) else "retrieval_gate_failed"
+        code = (
+            exc.code
+            if isinstance(exc, RetrievalSnapshotError)
+            else "retrieval_gate_failed"
+        )
         print(code, file=sys.stderr)
         return 2
     print(json.dumps(receipt.to_audit_dict(), indent=2, sort_keys=True))
