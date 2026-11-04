@@ -47,12 +47,13 @@ UTF-8, noncanonical JSON, unsupported schemas, and more than 100,000 sources.
 
 ## What the baseline binds
 
-Each `retrieval-regression-baseline/v1` artifact commits to:
+Each `retrieval-regression-baseline/v2` artifact commits to:
 
 - the full Git commit that produced the accepted result;
 - the configured top-K and exact evaluation case count;
 - independently computed SHA-256 commitments for the indexed corpus snapshot and
   evaluation case set;
+- the exact reviewed source-inventory commitment;
 - all document-level relevance and source-saturation metrics; and
 - an explicit maximum regression for every metric.
 
@@ -87,6 +88,7 @@ baseline = create_retrieval_baseline(
     k=5,
     corpus_snapshot_sha256=corpus_snapshot_sha256,
     evaluation_cases_sha256=evaluation_cases_sha256,
+    source_inventory_sha256=source_inventory_sha256,
 )
 
 comparison = compare_retrieval_baseline(
@@ -95,6 +97,7 @@ comparison = compare_retrieval_baseline(
     k=5,
     corpus_snapshot_sha256=corpus_snapshot_sha256,
     evaluation_cases_sha256=evaluation_cases_sha256,
+    source_inventory_sha256=source_inventory_sha256,
 )
 if not comparison.meets_policy:
     raise SystemExit(2)
@@ -104,6 +107,8 @@ Persist `serialize_retrieval_baseline(baseline)` in a reviewed release artifact.
 Load external bytes through `load_retrieval_baseline_json`; its 64 KiB boundary
 rejects duplicate keys, non-ASCII or noncanonical JSON, missing or extra fields,
 unsupported schemas, malformed ranges, and any artifact-digest change.
+Version 1 baselines are intentionally rejected because they do not bind a reviewed
+source inventory; regenerate and review a version 2 baseline instead of silently upgrading it.
 The comparison report contains only aggregate metrics, stable failure reasons, and
 content commitments—never queries, document IDs, chunk IDs, rankings, or text.
 
@@ -114,7 +119,8 @@ A candidate is not comparable when any of these change:
 - K;
 - case count;
 - corpus snapshot digest; or
-- evaluation-case digest.
+- evaluation-case digest; or
+- reviewed source-inventory digest.
 
 This prevents a release from passing by silently dropping difficult cases, switching
 the indexed corpus, or evaluating at an easier K. A changed corpus or suite requires a

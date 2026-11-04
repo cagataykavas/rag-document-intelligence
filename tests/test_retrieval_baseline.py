@@ -17,6 +17,7 @@ from src.retrieval_eval import RetrievalMetrics
 
 CORPUS_SHA256 = "1" * 64
 CASES_SHA256 = "2" * 64
+INVENTORY_SHA256 = "4" * 64
 SOURCE_COMMIT = "3" * 40
 
 
@@ -61,6 +62,7 @@ def _baseline():
         k=5,
         corpus_snapshot_sha256=CORPUS_SHA256,
         evaluation_cases_sha256=CASES_SHA256,
+        source_inventory_sha256=INVENTORY_SHA256,
     )
 
 
@@ -71,6 +73,7 @@ def _compare(candidate: RetrievalMetrics):
         k=5,
         corpus_snapshot_sha256=CORPUS_SHA256,
         evaluation_cases_sha256=CASES_SHA256,
+        source_inventory_sha256=INVENTORY_SHA256,
     )
 
 
@@ -96,6 +99,10 @@ def test_baseline_round_trip_rejects_tampering_and_extra_fields() -> None:
     tampered = {**document, "k": 4}
     with pytest.raises(RetrievalBaselineError, match="digest mismatch"):
         load_retrieval_baseline(tampered)
+
+    legacy = {**document, "schema_version": "retrieval-regression-baseline/v1"}
+    with pytest.raises(RetrievalBaselineError, match="schema is unsupported"):
+        load_retrieval_baseline(legacy)
 
     with pytest.raises(RetrievalBaselineError, match="malformed"):
         load_retrieval_baseline({**document, "unreviewed": True})
@@ -163,6 +170,7 @@ def test_gate_handles_both_metric_directions(metric: str, candidate: float) -> N
         ({"k": 4}, "candidate k"),
         ({"corpus_snapshot_sha256": "4" * 64}, "corpus snapshot"),
         ({"evaluation_cases_sha256": "5" * 64}, "evaluation cases"),
+        ({"source_inventory_sha256": "6" * 64}, "source inventory"),
     ],
 )
 def test_comparison_requires_exact_evaluation_identity(
@@ -172,6 +180,7 @@ def test_comparison_requires_exact_evaluation_identity(
         "k": 5,
         "corpus_snapshot_sha256": CORPUS_SHA256,
         "evaluation_cases_sha256": CASES_SHA256,
+        "source_inventory_sha256": INVENTORY_SHA256,
     }
     call.update(kwargs)
 
@@ -206,6 +215,7 @@ def test_non_finite_boolean_out_of_range_and_empty_metrics_fail_closed(
             k=5,
             corpus_snapshot_sha256=CORPUS_SHA256,
             evaluation_cases_sha256=CASES_SHA256,
+            source_inventory_sha256=INVENTORY_SHA256,
         )
 
 
@@ -232,6 +242,7 @@ def test_comparison_revalidates_in_memory_baseline_digest() -> None:
             k=5,
             corpus_snapshot_sha256=CORPUS_SHA256,
             evaluation_cases_sha256=CASES_SHA256,
+            source_inventory_sha256=INVENTORY_SHA256,
         )
 
 

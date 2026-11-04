@@ -599,6 +599,7 @@ def gate_candidate_snapshot(
         k=snapshot.k,
         corpus_snapshot_sha256=snapshot.corpus_snapshot_sha256,
         evaluation_cases_sha256=snapshot.evaluation_cases_sha256,
+        source_inventory_sha256=snapshot.source_inventory_sha256,
     )
     receipt = RetrievalSnapshotGateReceipt(
         schema_version=GATE_SCHEMA_VERSION,

@@ -9,8 +9,8 @@ from dataclasses import asdict, dataclass
 
 from src.retrieval_eval import RetrievalMetrics
 
-BASELINE_SCHEMA_VERSION = "retrieval-regression-baseline/v1"
-COMPARISON_SCHEMA_VERSION = "retrieval-regression-comparison/v1"
+BASELINE_SCHEMA_VERSION = "retrieval-regression-baseline/v2"
+COMPARISON_SCHEMA_VERSION = "retrieval-regression-comparison/v2"
 _IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}")
 _GIT_COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
@@ -37,6 +37,7 @@ _BASELINE_FIELDS = {
     "k",
     "corpus_snapshot_sha256",
     "evaluation_cases_sha256",
+    "source_inventory_sha256",
     "metrics",
     "thresholds",
     "artifact_sha256",
@@ -95,6 +96,7 @@ class RetrievalBaselineArtifact:
     k: int
     corpus_snapshot_sha256: str
     evaluation_cases_sha256: str
+    source_inventory_sha256: str
     metrics: RetrievalMetrics
     thresholds: RetrievalRegressionThresholds
     artifact_sha256: str
@@ -195,6 +197,7 @@ def create_retrieval_baseline(
     k: int,
     corpus_snapshot_sha256: str,
     evaluation_cases_sha256: str,
+    source_inventory_sha256: str,
 ) -> RetrievalBaselineArtifact:
     """Seal one reviewed retrieval result and its explicit regression budget."""
 
@@ -216,6 +219,7 @@ def create_retrieval_baseline(
         raise TypeError("thresholds must be RetrievalRegressionThresholds")
     _validate_digest(corpus_snapshot_sha256, "corpus snapshot digest")
     _validate_digest(evaluation_cases_sha256, "evaluation cases digest")
+    _validate_digest(source_inventory_sha256, "source inventory digest")
     _validate_metrics(metrics, k=k, name="baseline")
     if thresholds.max_mean_unique_documents_at_k_regression > k:
         raise ValueError("unique-document regression threshold cannot exceed k")
@@ -227,6 +231,7 @@ def create_retrieval_baseline(
         "k": k,
         "corpus_snapshot_sha256": corpus_snapshot_sha256,
         "evaluation_cases_sha256": evaluation_cases_sha256,
+        "source_inventory_sha256": source_inventory_sha256,
         "metrics": asdict(metrics),
         "thresholds": asdict(thresholds),
     }
@@ -238,6 +243,7 @@ def create_retrieval_baseline(
         k=k,
         corpus_snapshot_sha256=corpus_snapshot_sha256,
         evaluation_cases_sha256=evaluation_cases_sha256,
+        source_inventory_sha256=source_inventory_sha256,
         metrics=metrics,
         thresholds=thresholds,
         artifact_sha256=_sha256(document),
@@ -260,6 +266,7 @@ def load_retrieval_baseline(
             k=document["k"],
             corpus_snapshot_sha256=document["corpus_snapshot_sha256"],
             evaluation_cases_sha256=document["evaluation_cases_sha256"],
+            source_inventory_sha256=document["source_inventory_sha256"],
             metrics=_metrics_from_mapping(document["metrics"]),
             thresholds=_thresholds_from_mapping(document["thresholds"]),
             artifact_sha256=document["artifact_sha256"],
@@ -332,6 +339,7 @@ def _validate_baseline(baseline: RetrievalBaselineArtifact) -> None:
         raise RetrievalBaselineError("baseline metadata is malformed")
     _validate_digest(baseline.corpus_snapshot_sha256, "corpus snapshot digest")
     _validate_digest(baseline.evaluation_cases_sha256, "evaluation cases digest")
+    _validate_digest(baseline.source_inventory_sha256, "source inventory digest")
     _validate_digest(baseline.artifact_sha256, "baseline artifact digest")
     _validate_metrics(baseline.metrics, k=baseline.k, name="baseline")
     if baseline.thresholds.max_mean_unique_documents_at_k_regression > baseline.k:
@@ -352,6 +360,7 @@ def compare_retrieval_baseline(
     k: int,
     corpus_snapshot_sha256: str,
     evaluation_cases_sha256: str,
+    source_inventory_sha256: str,
 ) -> RetrievalRegressionComparison:
     """Compare like-for-like aggregate retrieval results against a sealed baseline."""
 
@@ -360,6 +369,7 @@ def compare_retrieval_baseline(
     _validate_baseline(baseline)
     _validate_digest(corpus_snapshot_sha256, "candidate corpus snapshot digest")
     _validate_digest(evaluation_cases_sha256, "candidate evaluation cases digest")
+    _validate_digest(source_inventory_sha256, "candidate source inventory digest")
     if k != baseline.k:
         raise RetrievalBaselineError("candidate k does not match baseline")
     if corpus_snapshot_sha256 != baseline.corpus_snapshot_sha256:
@@ -368,6 +378,10 @@ def compare_retrieval_baseline(
         )
     if evaluation_cases_sha256 != baseline.evaluation_cases_sha256:
         raise RetrievalBaselineError("candidate evaluation cases do not match baseline")
+    if source_inventory_sha256 != baseline.source_inventory_sha256:
+        raise RetrievalBaselineError(
+            "candidate source inventory does not match baseline"
+        )
     _validate_metrics(candidate, k=k, name="candidate")
     if candidate.cases != baseline.metrics.cases:
         raise RetrievalBaselineError("candidate case count does not match baseline")
@@ -407,6 +421,7 @@ def compare_retrieval_baseline(
         "k": k,
         "corpus_snapshot_sha256": corpus_snapshot_sha256,
         "evaluation_cases_sha256": evaluation_cases_sha256,
+        "source_inventory_sha256": source_inventory_sha256,
         "metrics": asdict(candidate),
     }
     comparison_document = {
