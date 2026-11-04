@@ -9,6 +9,7 @@ import re
 import sqlite3
 import stat
 import sys
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -21,11 +22,17 @@ from src.retrieval_baseline import (
     load_retrieval_baseline_json,
 )
 from src.retrieval_eval import RetrievalCase, RetrievalMetrics, evaluate_rankings
+from src.retrieval_inventory_review import (
+    inventory_review_policy_sha256,
+    load_inventory_review_attestation,
+    verify_inventory_review_attestation,
+)
 
 CASE_SCHEMA_VERSION = "retrieval-evaluation-cases/v1"
 INVENTORY_SCHEMA_VERSION = "retrieval-source-inventory/v1"
 SNAPSHOT_SCHEMA_VERSION = "retrieval-candidate-snapshot/v2"
 GATE_SCHEMA_VERSION = "retrieval-snapshot-gate/v2"
+REVIEWED_GATE_SCHEMA_VERSION = "reviewed-retrieval-snapshot-gate/v1"
 MAX_CASE_BYTES = 1_048_576
 MAX_INVENTORY_BYTES = 4_194_304
 MAX_BASELINE_BYTES = 65_536
@@ -90,6 +97,22 @@ class RetrievalSnapshotGateReceipt:
 
     def to_audit_dict(self) -> dict[str, object]:
         return asdict(self)
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewedRetrievalSnapshotGateReceipt:
+    schema_version: str
+    gate_receipt: RetrievalSnapshotGateReceipt
+    inventory_review_sha256: str
+    review_policy_sha256: str
+
+    def to_audit_dict(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "gate_receipt": self.gate_receipt.to_audit_dict(),
+            "inventory_review_sha256": self.inventory_review_sha256,
+            "review_policy_sha256": self.review_policy_sha256,
+        }
 
 
 def _canonical_json(value: object) -> bytes:
@@ -613,6 +636,37 @@ def gate_candidate_snapshot(
         source_inventory_sha256=snapshot.source_inventory_sha256,
         meets_policy=comparison.meets_policy,
         failure_reasons=comparison.failure_reasons,
+    )
+    return comparison, receipt
+
+
+def gate_reviewed_candidate_snapshot(
+    snapshot: RetrievalCandidateSnapshot,
+    baseline_payload: bytes,
+    inventory_review_payload: bytes,
+    *,
+    reviewer_public_keys: Mapping[str, bytes],
+    required_review_signatures: int,
+) -> tuple[RetrievalRegressionComparison, ReviewedRetrievalSnapshotGateReceipt]:
+    """Require an independent reviewer quorum before applying the retrieval gate."""
+    baseline = load_retrieval_baseline_json(baseline_payload)
+    attestation = load_inventory_review_attestation(inventory_review_payload)
+    review_sha256 = verify_inventory_review_attestation(
+        attestation,
+        expected_source_inventory_sha256=baseline.source_inventory_sha256,
+        expected_baseline_artifact_sha256=baseline.artifact_sha256,
+        public_keys=reviewer_public_keys,
+        required_signatures=required_review_signatures,
+    )
+    comparison, gate_receipt = gate_candidate_snapshot(snapshot, baseline_payload)
+    receipt = ReviewedRetrievalSnapshotGateReceipt(
+        schema_version=REVIEWED_GATE_SCHEMA_VERSION,
+        gate_receipt=gate_receipt,
+        inventory_review_sha256=review_sha256,
+        review_policy_sha256=inventory_review_policy_sha256(
+            reviewer_public_keys,
+            required_signatures=required_review_signatures,
+        ),
     )
     return comparison, receipt
 
