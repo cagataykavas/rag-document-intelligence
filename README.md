@@ -472,7 +472,8 @@ Rates use observed returned slots, while Precision@K retains its configured-K de
 ranking is therefore not mislabeled as duplicate-heavy.
 
 `src/retrieval_baseline.py` can seal an accepted result with its exact K, case count,
-corpus/evaluation commitments, source commit, and one reviewed regression tolerance per metric.
+corpus, evaluation-case, and reviewed source-inventory commitments, source commit, and one
+reviewed regression tolerance per metric.
 Candidate comparisons fail closed on identity drift and apply the correct direction to coverage
 and saturation metrics. `src/retrieval_gate.py` computes those commitments from a canonical case
 file and one consistent read-only SQLite snapshot, requires that snapshot to match a reviewed

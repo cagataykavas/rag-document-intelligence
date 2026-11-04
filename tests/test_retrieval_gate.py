@@ -126,6 +126,7 @@ def _baseline(snapshot, *, metrics=None) -> bytes:
         k=snapshot.k,
         corpus_snapshot_sha256=snapshot.corpus_snapshot_sha256,
         evaluation_cases_sha256=snapshot.evaluation_cases_sha256,
+        source_inventory_sha256=snapshot.source_inventory_sha256,
     )
     return serialize_retrieval_baseline(baseline)
 
