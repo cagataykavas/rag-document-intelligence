@@ -7,6 +7,8 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from src.parsers import ParsedDocument
 from src.retrieval_baseline import (
@@ -21,9 +23,14 @@ from src.retrieval_gate import (
     RetrievalSnapshotError,
     evaluate_candidate_snapshot,
     gate_candidate_snapshot,
+    gate_reviewed_candidate_snapshot,
     load_canonical_cases,
     load_canonical_source_inventory,
     main,
+)
+from src.retrieval_inventory_review import (
+    create_inventory_review_attestation,
+    dump_inventory_review_attestation,
 )
 from src.store import DocumentStore
 
@@ -366,3 +373,51 @@ def test_source_inventory_mismatch_fails_before_retrieval(
             _canonical(document),
             k=4,
         )
+
+
+def test_reviewed_gate_requires_quorum_over_exact_inventory_and_baseline(
+    tmp_path: Path,
+) -> None:
+    database, doc_ids = _database(tmp_path)
+    snapshot = evaluate_candidate_snapshot(database, _cases(doc_ids), _inventory(), k=4)
+    baseline_payload = _baseline(snapshot)
+    baseline = json.loads(baseline_payload)
+    private_keys = {
+        key_id: Ed25519PrivateKey.generate()
+        for key_id in (
+            "retrieval-reviewer-a",
+            "retrieval-reviewer-b",
+            "retrieval-reviewer-c",
+        )
+    }
+    public_keys = {
+        key_id: private_key.public_key().public_bytes(
+            Encoding.DER, PublicFormat.SubjectPublicKeyInfo
+        )
+        for key_id, private_key in private_keys.items()
+    }
+    review = create_inventory_review_attestation(
+        source_inventory_sha256=snapshot.source_inventory_sha256,
+        baseline_artifact_sha256=baseline["artifact_sha256"],
+        public_keys=public_keys,
+        required_signatures=2,
+        signers={
+            "retrieval-reviewer-a": private_keys["retrieval-reviewer-a"],
+            "retrieval-reviewer-c": private_keys["retrieval-reviewer-c"],
+        },
+    )
+
+    comparison, receipt = gate_reviewed_candidate_snapshot(
+        snapshot,
+        baseline_payload,
+        dump_inventory_review_attestation(review),
+        reviewer_public_keys=public_keys,
+        required_review_signatures=2,
+    )
+
+    assert comparison.meets_policy is True
+    assert receipt.gate_receipt.meets_policy is True
+    assert receipt.inventory_review_sha256 == review.attestation_sha256
+    serialized = json.dumps(receipt.to_audit_dict(), sort_keys=True)
+    assert "access.md" not in serialized
+    assert "retrieval-reviewer-a" not in serialized

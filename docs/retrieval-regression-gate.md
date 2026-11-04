@@ -112,6 +112,40 @@ source inventory; regenerate and review a version 2 baseline instead of silently
 The comparison report contains only aggregate metrics, stable failure reasons, and
 content commitments—never queries, document IDs, chunk IDs, rankings, or text.
 
+## Independent inventory review quorum
+
+`src/retrieval_inventory_review.py` authenticates the review decision separately from the
+baseline author. An attestation binds the exact source-inventory digest, baseline artifact digest,
+and a policy digest under a domain-separated Ed25519 message. The policy digest commits to a
+required threshold of at least two, the sorted reviewer key IDs, and the SHA-256 fingerprint of
+each distinct Ed25519 public key. Reusing one public key under multiple aliases is rejected, so an
+alias cannot satisfy a quorum.
+
+```python
+from src.retrieval_gate import gate_reviewed_candidate_snapshot
+
+comparison, receipt = gate_reviewed_candidate_snapshot(
+    candidate_snapshot,
+    baseline_payload,
+    inventory_review_payload,
+    reviewer_public_keys=protected_reviewer_keyring,
+    required_review_signatures=2,
+)
+```
+
+The high-level gate loads the canonical review, verifies every supplied signature, requires the
+configured distinct-key quorum, cross-checks the attested inventory and baseline, and only then
+applies the retrieval comparison. Its wrapper receipt carries the review and policy commitments but
+not reviewer IDs, signatures, source names, queries, or content. Treat the keyring and threshold as
+protected deployment policy; accepting them from the same untrusted change being reviewed would
+remove the trust boundary.
+
+Attestations have no freshness or revocation claim. A valid quorum proves that the configured keys
+signed those exact commitments, not that reviewers are organizationally independent, the inventory
+is authoritative or exhaustive, or the review is still current. A protected release job should add
+short-lived issuance/expiry bounds and a signed reviewer key-status snapshot before using this as a
+long-lived production approval.
+
 ## Fail-closed compatibility
 
 A candidate is not comparable when any of these change:

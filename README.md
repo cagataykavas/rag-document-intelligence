@@ -474,6 +474,10 @@ ranking is therefore not mislabeled as duplicate-heavy.
 `src/retrieval_baseline.py` can seal an accepted result with its exact K, case count,
 corpus, evaluation-case, and reviewed source-inventory commitments, source commit, and one
 reviewed regression tolerance per metric.
+`src/retrieval_inventory_review.py` can require a distinct Ed25519 reviewer quorum over the
+exact inventory and baseline commitments before `gate_reviewed_candidate_snapshot` applies that
+baseline. The externally trusted reviewer keyring and threshold are themselves committed into a
+review-policy digest, preventing key, threshold, or reviewer-set substitution.
 Candidate comparisons fail closed on identity drift and apply the correct direction to coverage
 and saturation metrics. `src/retrieval_gate.py` computes those commitments from a canonical case
 file and one consistent read-only SQLite snapshot, requires that snapshot to match a reviewed
