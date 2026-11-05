@@ -411,18 +411,30 @@ def test_reviewed_gate_requires_quorum_over_exact_inventory_and_baseline(
             "retrieval-reviewer-c": private_keys["retrieval-reviewer-c"],
         },
     )
-    status_authority = Ed25519PrivateKey.generate()
-    status_authority_public_key = status_authority.public_key().public_bytes(
-        Encoding.DER, PublicFormat.SubjectPublicKeyInfo
-    )
+    status_authorities = {
+        f"retrieval-reviewer-status-authority-{index}": Ed25519PrivateKey.generate()
+        for index in range(1, 4)
+    }
+    status_authority_public_keys = {
+        key_id: private_key.public_key().public_bytes(
+            Encoding.DER, PublicFormat.SubjectPublicKeyInfo
+        )
+        for key_id, private_key in status_authorities.items()
+    }
     key_status = create_reviewer_key_status_snapshot(
         review_policy_sha256=review.review_policy_sha256,
         statuses={key_id: "active" for key_id in public_keys},
         issued_at_epoch=1_800_000_000,
         expires_at_epoch=1_800_003_600,
-        authority_key_id="retrieval-reviewer-status-authority",
-        authority_public_key=status_authority_public_key,
-        signer=status_authority,
+        authority_public_keys=status_authority_public_keys,
+        required_authority_signatures=2,
+        signers={
+            key_id: status_authorities[key_id]
+            for key_id in (
+                "retrieval-reviewer-status-authority-1",
+                "retrieval-reviewer-status-authority-3",
+            )
+        },
     )
 
     comparison, receipt = gate_reviewed_candidate_snapshot(
@@ -432,9 +444,8 @@ def test_reviewed_gate_requires_quorum_over_exact_inventory_and_baseline(
         dump_reviewer_key_status_snapshot(key_status),
         reviewer_public_keys=public_keys,
         required_review_signatures=2,
-        status_authority_public_keys={
-            "retrieval-reviewer-status-authority": status_authority_public_key
-        },
+        status_authority_public_keys=status_authority_public_keys,
+        required_status_authority_signatures=2,
         verification_epoch=1_800_000_060,
     )
 
@@ -456,9 +467,15 @@ def test_reviewed_gate_requires_quorum_over_exact_inventory_and_baseline(
         },
         issued_at_epoch=1_800_000_000,
         expires_at_epoch=1_800_003_600,
-        authority_key_id="retrieval-reviewer-status-authority",
-        authority_public_key=status_authority_public_key,
-        signer=status_authority,
+        authority_public_keys=status_authority_public_keys,
+        required_authority_signatures=2,
+        signers={
+            key_id: status_authorities[key_id]
+            for key_id in (
+                "retrieval-reviewer-status-authority-1",
+                "retrieval-reviewer-status-authority-2",
+            )
+        },
     )
     with pytest.raises(ReviewerKeyStatusError, match="revoked signer"):
         gate_reviewed_candidate_snapshot(
@@ -468,8 +485,7 @@ def test_reviewed_gate_requires_quorum_over_exact_inventory_and_baseline(
             dump_reviewer_key_status_snapshot(revoked_status),
             reviewer_public_keys=public_keys,
             required_review_signatures=2,
-            status_authority_public_keys={
-                "retrieval-reviewer-status-authority": status_authority_public_key
-            },
+            status_authority_public_keys=status_authority_public_keys,
+            required_status_authority_signatures=2,
             verification_epoch=1_800_000_060,
         )

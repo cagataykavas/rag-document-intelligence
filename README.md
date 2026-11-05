@@ -477,9 +477,12 @@ reviewed regression tolerance per metric.
 `src/retrieval_inventory_review.py` can require a distinct Ed25519 reviewer quorum over the
 exact inventory and baseline commitments before `gate_reviewed_candidate_snapshot` applies that
 baseline. The externally trusted reviewer keyring and threshold are themselves committed into a
-review-policy digest, preventing key, threshold, or reviewer-set substitution. A separately signed,
-short-lived reviewer key-status snapshot must cover that exact policy and keyring; the gate rejects
-expired snapshots and any review signed by a key marked revoked.
+review-policy digest, preventing key, threshold, or reviewer-set substitution. A separately
+quorum-signed, short-lived reviewer key-status snapshot must cover that exact policy and keyring;
+its authority-policy digest commits the independent authority keyring and threshold, so one
+compromised status key cannot revoke or bless reviewers alone. The gate rejects expired snapshots,
+authority-policy substitution, a missing authority quorum, and any review signed by a key marked
+revoked.
 Candidate comparisons fail closed on identity drift and apply the correct direction to coverage
 and saturation metrics. `src/retrieval_gate.py` computes those commitments from a canonical case
 file and one consistent read-only SQLite snapshot, requires that snapshot to match a reviewed
