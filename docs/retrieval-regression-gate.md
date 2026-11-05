@@ -128,23 +128,31 @@ comparison, receipt = gate_reviewed_candidate_snapshot(
     candidate_snapshot,
     baseline_payload,
     inventory_review_payload,
+    reviewer_key_status_payload,
     reviewer_public_keys=protected_reviewer_keyring,
     required_review_signatures=2,
+    status_authority_public_keys=protected_status_authority_keyring,
+    verification_epoch=trusted_verification_epoch,
 )
 ```
 
-The high-level gate loads the canonical review, verifies every supplied signature, requires the
-configured distinct-key quorum, cross-checks the attested inventory and baseline, and only then
-applies the retrieval comparison. Its wrapper receipt carries the review and policy commitments but
-not reviewer IDs, signatures, source names, queries, or content. Treat the keyring and threshold as
-protected deployment policy; accepting them from the same untrusted change being reviewed would
+The high-level gate first verifies a canonical, domain-separated Ed25519 status snapshot. The
+snapshot must cover the exact reviewer keyring, bind the review-policy digest, remain within a
+24-hour maximum validity window, be current at the supplied verification epoch, and be signed by a
+trusted authority key that is cryptographically distinct from every reviewer key. Every signer in
+the inventory review must be active. Only then does the gate verify the review quorum, cross-check
+the attested inventory and baseline, and apply the retrieval comparison.
+
+The wrapper receipt cross-binds the review, status snapshot, status policy, verification epoch and
+aggregate active/revoked counts, but not reviewer IDs, authority IDs, signatures, source names,
+queries, or content. Treat the reviewer keyring, threshold, status-authority keyring and verification
+epoch as protected deployment policy; accepting them from the untrusted change being reviewed would
 remove the trust boundary.
 
-Attestations have no freshness or revocation claim. A valid quorum proves that the configured keys
-signed those exact commitments, not that reviewers are organizationally independent, the inventory
-is authoritative or exhaustive, or the review is still current. A protected release job should add
-short-lived issuance/expiry bounds and a signed reviewer key-status snapshot before using this as a
-long-lived production approval.
+A valid snapshot does not prove reviewer organizational independence, inventory authority or
+completeness, trustworthy time, or that a single status authority is uncompromised. A protected
+release job should source time from authenticated infrastructure and eventually require
+threshold-signed or transparency-logged status snapshots.
 
 ## Fail-closed compatibility
 
