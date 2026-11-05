@@ -32,6 +32,11 @@ from src.retrieval_inventory_review import (
     create_inventory_review_attestation,
     dump_inventory_review_attestation,
 )
+from src.reviewer_key_status import (
+    ReviewerKeyStatusError,
+    create_reviewer_key_status_snapshot,
+    dump_reviewer_key_status_snapshot,
+)
 from src.store import DocumentStore
 
 SOURCE_COMMIT = "0" * 40
@@ -406,18 +411,65 @@ def test_reviewed_gate_requires_quorum_over_exact_inventory_and_baseline(
             "retrieval-reviewer-c": private_keys["retrieval-reviewer-c"],
         },
     )
+    status_authority = Ed25519PrivateKey.generate()
+    status_authority_public_key = status_authority.public_key().public_bytes(
+        Encoding.DER, PublicFormat.SubjectPublicKeyInfo
+    )
+    key_status = create_reviewer_key_status_snapshot(
+        review_policy_sha256=review.review_policy_sha256,
+        statuses={key_id: "active" for key_id in public_keys},
+        issued_at_epoch=1_800_000_000,
+        expires_at_epoch=1_800_003_600,
+        authority_key_id="retrieval-reviewer-status-authority",
+        authority_public_key=status_authority_public_key,
+        signer=status_authority,
+    )
 
     comparison, receipt = gate_reviewed_candidate_snapshot(
         snapshot,
         baseline_payload,
         dump_inventory_review_attestation(review),
+        dump_reviewer_key_status_snapshot(key_status),
         reviewer_public_keys=public_keys,
         required_review_signatures=2,
+        status_authority_public_keys={
+            "retrieval-reviewer-status-authority": status_authority_public_key
+        },
+        verification_epoch=1_800_000_060,
     )
 
     assert comparison.meets_policy is True
     assert receipt.gate_receipt.meets_policy is True
     assert receipt.inventory_review_sha256 == review.attestation_sha256
+    assert receipt.key_status_snapshot_sha256 == key_status.snapshot_sha256
+    assert receipt.active_reviewer_key_count == 3
+    assert receipt.revoked_reviewer_key_count == 0
     serialized = json.dumps(receipt.to_audit_dict(), sort_keys=True)
     assert "access.md" not in serialized
     assert "retrieval-reviewer-a" not in serialized
+
+    revoked_status = create_reviewer_key_status_snapshot(
+        review_policy_sha256=review.review_policy_sha256,
+        statuses={
+            key_id: "revoked" if key_id == "retrieval-reviewer-c" else "active"
+            for key_id in public_keys
+        },
+        issued_at_epoch=1_800_000_000,
+        expires_at_epoch=1_800_003_600,
+        authority_key_id="retrieval-reviewer-status-authority",
+        authority_public_key=status_authority_public_key,
+        signer=status_authority,
+    )
+    with pytest.raises(ReviewerKeyStatusError, match="revoked signer"):
+        gate_reviewed_candidate_snapshot(
+            snapshot,
+            baseline_payload,
+            dump_inventory_review_attestation(review),
+            dump_reviewer_key_status_snapshot(revoked_status),
+            reviewer_public_keys=public_keys,
+            required_review_signatures=2,
+            status_authority_public_keys={
+                "retrieval-reviewer-status-authority": status_authority_public_key
+            },
+            verification_epoch=1_800_000_060,
+        )

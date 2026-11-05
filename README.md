@@ -477,7 +477,9 @@ reviewed regression tolerance per metric.
 `src/retrieval_inventory_review.py` can require a distinct Ed25519 reviewer quorum over the
 exact inventory and baseline commitments before `gate_reviewed_candidate_snapshot` applies that
 baseline. The externally trusted reviewer keyring and threshold are themselves committed into a
-review-policy digest, preventing key, threshold, or reviewer-set substitution.
+review-policy digest, preventing key, threshold, or reviewer-set substitution. A separately signed,
+short-lived reviewer key-status snapshot must cover that exact policy and keyring; the gate rejects
+expired snapshots and any review signed by a key marked revoked.
 Candidate comparisons fail closed on identity drift and apply the correct direction to coverage
 and saturation metrics. `src/retrieval_gate.py` computes those commitments from a canonical case
 file and one consistent read-only SQLite snapshot, requires that snapshot to match a reviewed
@@ -552,6 +554,8 @@ src/entailment_release_anchor.py KMS-compatible asymmetric release-head anchors
 src/entailment_release_retention.py S3 Object Lock retention for verified anchors
 src/retrieval_eval.py  relevance metrics + top-K source saturation diagnostics
 src/retrieval_baseline.py content-addressed retrieval regression baseline and gate
+src/retrieval_inventory_review.py authenticated reviewer-quorum decision
+src/reviewer_key_status.py signed reviewer freshness and revocation policy
 src/retrieval_gate.py   reviewed-inventory corpus/case evaluator and CI gate command
 src/evaluate.py        labelled end-to-end evaluation
 src/conflicts.py       deterministic requirement contradictions
