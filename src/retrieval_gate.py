@@ -663,6 +663,7 @@ def gate_reviewed_candidate_snapshot(
     reviewer_public_keys: Mapping[str, bytes],
     required_review_signatures: int,
     status_authority_public_keys: Mapping[str, bytes],
+    required_status_authority_signatures: int,
     verification_epoch: int,
 ) -> tuple[RetrievalRegressionComparison, ReviewedRetrievalSnapshotGateReceipt]:
     """Require a current, non-revoked reviewer quorum before the retrieval gate."""
@@ -679,6 +680,7 @@ def gate_reviewed_candidate_snapshot(
         reviewer_public_keys=reviewer_public_keys,
         required_active_key_ids=tuple(item.key_id for item in attestation.signatures),
         authority_public_keys=status_authority_public_keys,
+        required_authority_signatures=required_status_authority_signatures,
         verification_epoch=verification_epoch,
     )
     review_sha256 = verify_inventory_review_attestation(

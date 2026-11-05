@@ -17,31 +17,40 @@ from cryptography.hazmat.primitives.serialization import (
     load_der_public_key,
 )
 
-STATUS_SCHEMA_VERSION = "retrieval-reviewer-key-status/v1"
-STATUS_RECEIPT_SCHEMA_VERSION = "retrieval-reviewer-key-status-verification/v1"
+STATUS_SCHEMA_VERSION = "retrieval-reviewer-key-status/v2"
+STATUS_RECEIPT_SCHEMA_VERSION = "retrieval-reviewer-key-status-verification/v2"
+STATUS_AUTHORITY_POLICY_SCHEMA_VERSION = (
+    "retrieval-reviewer-key-status-authority-policy/v1"
+)
 STATUS_PURPOSE = "rag-retrieval-reviewer-key-status"
 STATUS_ALGORITHM = "ed25519"
 MAX_STATUS_BYTES = 32_768
 MAX_STATUS_LIFETIME_SECONDS = 86_400
 MAX_AUTHORITIES = 8
 
-_DOMAIN = b"rag-document-intelligence/reviewer-key-status/v1\0"
-_POLICY_DOMAIN = b"rag-document-intelligence/reviewer-key-status-policy/v1\0"
+_DOMAIN = b"rag-document-intelligence/reviewer-key-status/v2\0"
+_AUTHORITY_POLICY_DOMAIN = (
+    b"rag-document-intelligence/reviewer-key-status-authority-policy/v1\0"
+)
+_RECEIPT_POLICY_DOMAIN = (
+    b"rag-document-intelligence/reviewer-key-status-receipt-policy/v2\0"
+)
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 _IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/+-]{0,127}")
 _SIGNATURE_RE = re.compile(r"[A-Za-z0-9_-]{86}")
 _FIELDS = {
     "algorithm",
-    "authority_key_id",
+    "authority_policy_sha256",
     "expires_at_epoch",
     "issued_at_epoch",
     "purpose",
     "review_policy_sha256",
     "schema_version",
-    "signature",
+    "signatures",
     "statuses",
 }
 _STATUS_FIELDS = {"key_id", "status"}
+_SIGNATURE_FIELDS = {"key_id", "signature"}
 
 
 class ReviewerKeyStatusError(ValueError):
@@ -65,6 +74,12 @@ class ReviewerKeyStatus:
 
 
 @dataclass(frozen=True, slots=True)
+class ReviewerKeyStatusSignature:
+    key_id: str
+    signature: str
+
+
+@dataclass(frozen=True, slots=True)
 class ReviewerKeyStatusSnapshot:
     schema_version: str
     purpose: str
@@ -72,9 +87,9 @@ class ReviewerKeyStatusSnapshot:
     review_policy_sha256: str
     issued_at_epoch: int
     expires_at_epoch: int
-    authority_key_id: str
+    authority_policy_sha256: str
     statuses: tuple[ReviewerKeyStatus, ...]
-    signature: str
+    signatures: tuple[ReviewerKeyStatusSignature, ...]
 
     @property
     def snapshot_sha256(self) -> str:
@@ -155,7 +170,7 @@ def _unsigned_document(snapshot: ReviewerKeyStatusSnapshot) -> dict[str, object]
     return {
         key: value
         for key, value in snapshot.to_audit_dict().items()
-        if key != "signature"
+        if key != "signatures"
     }
 
 
@@ -189,6 +204,7 @@ def _validate_snapshot(snapshot: ReviewerKeyStatusSnapshot) -> None:
     ):
         raise ReviewerKeyStatusError("status snapshot policy is unsupported")
     _validate_digest(snapshot.review_policy_sha256, "review policy digest")
+    _validate_digest(snapshot.authority_policy_sha256, "authority policy digest")
     if (
         type(snapshot.issued_at_epoch) is not int
         or type(snapshot.expires_at_epoch) is not int
@@ -199,11 +215,7 @@ def _validate_snapshot(snapshot: ReviewerKeyStatusSnapshot) -> None:
     ):
         raise ReviewerKeyStatusError("status snapshot validity window is invalid")
     if (
-        not isinstance(snapshot.authority_key_id, str)
-        or _IDENTIFIER_RE.fullmatch(snapshot.authority_key_id) is None
-        or not isinstance(snapshot.signature, str)
-        or _SIGNATURE_RE.fullmatch(snapshot.signature) is None
-        or not isinstance(snapshot.statuses, tuple)
+        not isinstance(snapshot.statuses, tuple)
         or not 2 <= len(snapshot.statuses) <= 32
     ):
         raise ReviewerKeyStatusError("status snapshot is malformed")
@@ -221,6 +233,62 @@ def _validate_snapshot(snapshot: ReviewerKeyStatusSnapshot) -> None:
         raise ReviewerKeyStatusError(
             "reviewer key statuses must have unique sorted key ids"
         )
+    if (
+        not isinstance(snapshot.signatures, tuple)
+        or not 2 <= len(snapshot.signatures) <= MAX_AUTHORITIES
+    ):
+        raise ReviewerKeyStatusError("status authority signature count is invalid")
+    authority_ids: list[str] = []
+    for item in snapshot.signatures:
+        if (
+            not isinstance(item, ReviewerKeyStatusSignature)
+            or not isinstance(item.key_id, str)
+            or _IDENTIFIER_RE.fullmatch(item.key_id) is None
+            or not isinstance(item.signature, str)
+            or _SIGNATURE_RE.fullmatch(item.signature) is None
+        ):
+            raise ReviewerKeyStatusError("status authority signature is malformed")
+        authority_ids.append(item.key_id)
+    if authority_ids != sorted(authority_ids) or len(set(authority_ids)) != len(
+        authority_ids
+    ):
+        raise ReviewerKeyStatusError(
+            "status authority signatures must have unique sorted key ids"
+        )
+
+
+def reviewer_key_status_authority_policy_sha256(
+    authority_public_keys: Mapping[str, bytes],
+    *,
+    required_signatures: int,
+) -> str:
+    """Commit to the exact status-authority keyring and quorum threshold."""
+    _, fingerprints = _load_public_keys(
+        authority_public_keys,
+        minimum=2,
+        maximum=MAX_AUTHORITIES,
+        role="status authority",
+    )
+    if type(required_signatures) is not int or not 2 <= required_signatures <= len(
+        fingerprints
+    ):
+        raise ReviewerKeyStatusError(
+            "required authority signatures must be in [2, authority count]"
+        )
+    document = {
+        "schema_version": STATUS_AUTHORITY_POLICY_SCHEMA_VERSION,
+        "required_signatures": required_signatures,
+        "authorities": tuple(
+            {
+                "key_id": key_id,
+                "public_key_sha256": fingerprints[key_id],
+            }
+            for key_id in sorted(fingerprints)
+        ),
+    }
+    return hashlib.sha256(
+        _AUTHORITY_POLICY_DOMAIN + _canonical_json(document)
+    ).hexdigest()
 
 
 def create_reviewer_key_status_snapshot(
@@ -229,11 +297,11 @@ def create_reviewer_key_status_snapshot(
     statuses: Mapping[str, str],
     issued_at_epoch: int,
     expires_at_epoch: int,
-    authority_key_id: str,
-    authority_public_key: bytes,
-    signer: MessageSigner,
+    authority_public_keys: Mapping[str, bytes],
+    required_authority_signatures: int,
+    signers: Mapping[str, MessageSigner],
 ) -> ReviewerKeyStatusSnapshot:
-    """Create one signed short-lived status view for an exact review policy."""
+    """Create one quorum-signed short-lived status view for an exact review policy."""
     rows = (
         tuple(
             ReviewerKeyStatus(key_id, status)
@@ -242,6 +310,24 @@ def create_reviewer_key_status_snapshot(
         if isinstance(statuses, Mapping)
         else ()
     )
+    authorities, _ = _load_public_keys(
+        authority_public_keys,
+        minimum=2,
+        maximum=MAX_AUTHORITIES,
+        role="status authority",
+    )
+    policy_sha256 = reviewer_key_status_authority_policy_sha256(
+        authority_public_keys,
+        required_signatures=required_authority_signatures,
+    )
+    if (
+        not isinstance(signers, Mapping)
+        or not required_authority_signatures <= len(signers) <= len(authorities)
+        or any(key_id not in authorities for key_id in signers)
+    ):
+        raise ReviewerKeyStatusError(
+            "status signers do not satisfy the authority policy"
+        )
     unsigned: dict[str, object] = {
         "schema_version": STATUS_SCHEMA_VERSION,
         "purpose": STATUS_PURPOSE,
@@ -249,32 +335,34 @@ def create_reviewer_key_status_snapshot(
         "review_policy_sha256": review_policy_sha256,
         "issued_at_epoch": issued_at_epoch,
         "expires_at_epoch": expires_at_epoch,
-        "authority_key_id": authority_key_id,
+        "authority_policy_sha256": policy_sha256,
         "statuses": rows,
     }
-    placeholder = ReviewerKeyStatusSnapshot(**unsigned, signature="A" * 86)
+    placeholder = ReviewerKeyStatusSnapshot(
+        **unsigned,
+        signatures=tuple(
+            ReviewerKeyStatusSignature(key_id, "A" * 86) for key_id in sorted(signers)
+        ),
+    )
     _validate_snapshot(placeholder)
-    authorities, _ = _load_public_keys(
-        {authority_key_id: authority_public_key},
-        minimum=1,
-        maximum=1,
-        role="status authority",
-    )
     message = _message(_unsigned_document(placeholder))
-    try:
-        signature = signer.sign(message)
-        authorities[authority_key_id].verify(signature, message)
-    except InvalidSignature as exc:
-        raise ReviewerKeyStatusError(
-            "status signer does not match its trusted key"
-        ) from exc
-    except ReviewerKeyStatusError:
-        raise
-    except Exception as exc:
-        raise ReviewerKeyStatusError("status signing failed") from exc
-    snapshot = ReviewerKeyStatusSnapshot(
-        **unsigned, signature=_encode_signature(signature)
-    )
+    signatures: list[ReviewerKeyStatusSignature] = []
+    for key_id in sorted(signers):
+        try:
+            signature = signers[key_id].sign(message)
+            authorities[key_id].verify(signature, message)
+        except InvalidSignature as exc:
+            raise ReviewerKeyStatusError(
+                "status signer does not match its trusted key"
+            ) from exc
+        except ReviewerKeyStatusError:
+            raise
+        except Exception as exc:
+            raise ReviewerKeyStatusError("status signing failed") from exc
+        signatures.append(
+            ReviewerKeyStatusSignature(key_id, _encode_signature(signature))
+        )
+    snapshot = ReviewerKeyStatusSnapshot(**unsigned, signatures=tuple(signatures))
     _validate_snapshot(snapshot)
     return snapshot
 
@@ -286,9 +374,10 @@ def verify_reviewer_key_status_snapshot(
     reviewer_public_keys: Mapping[str, bytes],
     required_active_key_ids: tuple[str, ...],
     authority_public_keys: Mapping[str, bytes],
+    required_authority_signatures: int,
     verification_epoch: int,
 ) -> ReviewerKeyStatusReceipt:
-    """Verify status authority, coverage, freshness, and active review signers."""
+    """Verify authority quorum, coverage, freshness, and active review signers."""
     _validate_snapshot(snapshot)
     expected_policy = _validate_digest(
         expected_review_policy_sha256, "expected review policy digest"
@@ -307,27 +396,33 @@ def verify_reviewer_key_status_snapshot(
     )
     authorities, authority_fingerprints = _load_public_keys(
         authority_public_keys,
-        minimum=1,
+        minimum=2,
         maximum=MAX_AUTHORITIES,
         role="status authority",
     )
-    authority = authorities.get(snapshot.authority_key_id)
-    if authority is None:
-        raise ReviewerKeyStatusError("status authority is not trusted")
-    if (
-        authority_fingerprints[snapshot.authority_key_id]
-        in reviewer_fingerprints.values()
+    expected_authority_policy = reviewer_key_status_authority_policy_sha256(
+        authority_public_keys,
+        required_signatures=required_authority_signatures,
+    )
+    if not hmac.compare_digest(
+        snapshot.authority_policy_sha256, expected_authority_policy
     ):
+        raise ReviewerKeyStatusError("status authority policy mismatch")
+    if set(authority_fingerprints.values()) & set(reviewer_fingerprints.values()):
         raise ReviewerKeyStatusError(
-            "status authority must be independent from reviewers"
+            "status authorities must be independent from reviewers"
         )
-    try:
-        authority.verify(
-            _decode_signature(snapshot.signature),
-            _message(_unsigned_document(snapshot)),
-        )
-    except InvalidSignature as exc:
-        raise ReviewerKeyStatusError("status signature mismatch") from exc
+    if len(snapshot.signatures) < required_authority_signatures:
+        raise ReviewerKeyStatusError("status authority quorum is not satisfied")
+    message = _message(_unsigned_document(snapshot))
+    for item in snapshot.signatures:
+        authority = authorities.get(item.key_id)
+        if authority is None:
+            raise ReviewerKeyStatusError("status authority is not trusted")
+        try:
+            authority.verify(_decode_signature(item.signature), message)
+        except InvalidSignature as exc:
+            raise ReviewerKeyStatusError("status signature mismatch") from exc
 
     observed = {item.key_id: item.status for item in snapshot.statuses}
     if set(observed) != set(reviewers):
@@ -347,14 +442,8 @@ def verify_reviewer_key_status_snapshot(
     policy_document = {
         "schema_version": STATUS_RECEIPT_SCHEMA_VERSION,
         "review_policy_sha256": expected_policy,
-        "authorities": tuple(
-            {
-                "key_id": key_id,
-                "public_key_sha256": authority_fingerprints[key_id],
-            }
-            for key_id in sorted(authority_fingerprints)
-        ),
-        "signing_authority_key_id": snapshot.authority_key_id,
+        "authority_policy_sha256": expected_authority_policy,
+        "authority_signature_count": len(snapshot.signatures),
         "maximum_lifetime_seconds": MAX_STATUS_LIFETIME_SECONDS,
     }
     active_count = sum(status == "active" for status in observed.values())
@@ -362,7 +451,7 @@ def verify_reviewer_key_status_snapshot(
         schema_version=STATUS_RECEIPT_SCHEMA_VERSION,
         snapshot_sha256=snapshot.snapshot_sha256,
         status_policy_sha256=hashlib.sha256(
-            _POLICY_DOMAIN + _canonical_json(policy_document)
+            _RECEIPT_POLICY_DOMAIN + _canonical_json(policy_document)
         ).hexdigest(),
         active_key_count=active_count,
         revoked_key_count=len(observed) - active_count,
@@ -409,10 +498,20 @@ def load_reviewer_key_status_snapshot(payload: bytes) -> ReviewerKeyStatusSnapsh
         not isinstance(row, dict) or set(row) != _STATUS_FIELDS for row in rows
     ):
         raise ReviewerKeyStatusError("reviewer key status is malformed")
+    signatures = document.get("signatures")
+    if not isinstance(signatures, list) or any(
+        not isinstance(row, dict) or set(row) != _SIGNATURE_FIELDS for row in signatures
+    ):
+        raise ReviewerKeyStatusError("status authority signature is malformed")
     try:
         snapshot = ReviewerKeyStatusSnapshot(
-            **{key: value for key, value in document.items() if key != "statuses"},
+            **{
+                key: value
+                for key, value in document.items()
+                if key not in {"statuses", "signatures"}
+            },
             statuses=tuple(ReviewerKeyStatus(**row) for row in rows),
+            signatures=tuple(ReviewerKeyStatusSignature(**row) for row in signatures),
         )
     except TypeError as exc:
         raise ReviewerKeyStatusError(
