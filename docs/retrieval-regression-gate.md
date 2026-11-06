@@ -169,8 +169,30 @@ after checking its own immutable workflow revision and trusted clock source.
 A valid statement authenticates which release authority asserted the epoch; it does not prove that
 the authority's clock is correct. A valid status snapshot also does not prove reviewer
 organizational independence, inventory authority or completeness, or that a compromised authority
-quorum cannot collude. The next hardening step is to publish accepted release-epoch and status
-commitments to an independently monitored transparency log.
+quorum cannot collude. Accepted release-epoch and status commitments should be published to an
+independently monitored transparency log.
+
+## Retained acceptance history
+
+`src/retrieval_release_log.py` provides that publication boundary for a protected worker. Its
+`append_reviewed_retrieval_release` entry point re-runs the complete reviewed gate before opening
+the log, and refuses to create or modify the file when the candidate regresses. Each owner-only,
+canonical JSONL entry commits to the candidate, baseline, comparison, inventory review, reviewer
+status, release-epoch statement and release policy, plus a domain-separated digest of the complete
+privacy-reduced gate receipt.
+
+Writers must supply the head they previously observed. Under the exclusive advisory lock, the
+append compares that head to the current chain, rejects stale writers, and requires authenticated
+verification epochs to increase. Replaying the exact release-epoch statement is idempotent; reusing
+it with different evidence is rejected as equivocation. Readers can pin an independently retained
+head with `verify_retrieval_release_log(..., expected_head_sha256=...)`.
+
+The chain detects internal deletion, reordering, substitution, truncation, duplicate releases,
+unsafe permissions, symlinks and hard links. It cannot detect wholesale replacement by an operator
+who controls both the file and the head supplied to the reader. Persist each accepted head in
+object-locked storage or a separately monitored witness, and serialize log publication with the
+protected release job. POSIX advisory locks are required; this implementation is not a shared-NFS
+or public transparency service.
 
 ## Fail-closed compatibility
 

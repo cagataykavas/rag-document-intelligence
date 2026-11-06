@@ -489,7 +489,10 @@ Candidate comparisons fail closed on identity drift and apply the correct direct
 and saturation metrics. `src/retrieval_gate.py` computes those commitments from a canonical case
 file and one consistent read-only SQLite snapshot, requires that snapshot to match a reviewed
 source/content inventory, evaluates the exact rows, and exits nonzero when CI policy fails. Reports
-retain aggregate values and hashes only. See
+retain aggregate values and hashes only. `src/retrieval_release_log.py` re-runs that complete
+reviewed gate before atomically recording an accepted decision in an owner-only, head-CAS,
+hash-chained JSONL history. It makes exact release retries idempotent, rejects stale writers and
+non-advancing authenticated epochs, and retains commitments only. See
 [`docs/retrieval-regression-gate.md`](docs/retrieval-regression-gate.md) for the contract and its
 statistical boundary.
 
@@ -562,6 +565,7 @@ src/retrieval_baseline.py content-addressed retrieval regression baseline and ga
 src/retrieval_inventory_review.py authenticated reviewer-quorum decision
 src/reviewer_key_status.py signed reviewer freshness and revocation policy
 src/retrieval_release_epoch.py authenticated epoch bound to exact reviewed gate inputs
+src/retrieval_release_log.py verified, hash-chained reviewed retrieval acceptance history
 src/retrieval_gate.py   reviewed-inventory corpus/case evaluator and CI gate command
 src/evaluate.py        labelled end-to-end evaluation
 src/conflicts.py       deterministic requirement contradictions
@@ -584,6 +588,7 @@ GitHub Actions runs without an external LLM key and checks:
 - prompt-injection quarantine behavior;
 - zero/one/few-shot evaluation harness;
 - disjoint-split entailment calibration, bounded lexical/semantic leakage checks, privacy-reduced reports, verified evaluation-only slice assignments, paired per-slice regression gates, authenticated candidate release manifests, and hash-chained release history;
+- reviewed retrieval inventory, reviewer-status and release-epoch authentication, plus atomic accepted-release history;
 - requirement-conflict analysis;
 - REST API behavior;
 - Docker Compose validation;
