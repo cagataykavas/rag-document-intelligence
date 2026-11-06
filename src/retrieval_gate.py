@@ -27,6 +27,11 @@ from src.retrieval_inventory_review import (
     load_inventory_review_attestation,
     verify_inventory_review_attestation,
 )
+from src.retrieval_release_epoch import (
+    ReleaseEpochPolicy,
+    load_release_epoch_attestation,
+    verify_release_epoch_attestation,
+)
 from src.reviewer_key_status import (
     load_reviewer_key_status_snapshot,
     verify_reviewer_key_status_snapshot,
@@ -36,7 +41,7 @@ CASE_SCHEMA_VERSION = "retrieval-evaluation-cases/v1"
 INVENTORY_SCHEMA_VERSION = "retrieval-source-inventory/v1"
 SNAPSHOT_SCHEMA_VERSION = "retrieval-candidate-snapshot/v2"
 GATE_SCHEMA_VERSION = "retrieval-snapshot-gate/v2"
-REVIEWED_GATE_SCHEMA_VERSION = "reviewed-retrieval-snapshot-gate/v2"
+REVIEWED_GATE_SCHEMA_VERSION = "reviewed-retrieval-snapshot-gate/v3"
 MAX_CASE_BYTES = 1_048_576
 MAX_INVENTORY_BYTES = 4_194_304
 MAX_BASELINE_BYTES = 65_536
@@ -113,6 +118,9 @@ class ReviewedRetrievalSnapshotGateReceipt:
     key_status_policy_sha256: str
     active_reviewer_key_count: int
     revoked_reviewer_key_count: int
+    release_epoch_attestation_sha256: str
+    release_epoch_artifact_set_sha256: str
+    release_epoch_policy_sha256: str
     verification_epoch: int
 
     def to_audit_dict(self) -> dict[str, object]:
@@ -125,6 +133,9 @@ class ReviewedRetrievalSnapshotGateReceipt:
             "key_status_policy_sha256": self.key_status_policy_sha256,
             "active_reviewer_key_count": self.active_reviewer_key_count,
             "revoked_reviewer_key_count": self.revoked_reviewer_key_count,
+            "release_epoch_attestation_sha256": self.release_epoch_attestation_sha256,
+            "release_epoch_artifact_set_sha256": self.release_epoch_artifact_set_sha256,
+            "release_epoch_policy_sha256": self.release_epoch_policy_sha256,
             "verification_epoch": self.verification_epoch,
         }
 
@@ -659,14 +670,15 @@ def gate_reviewed_candidate_snapshot(
     baseline_payload: bytes,
     inventory_review_payload: bytes,
     reviewer_key_status_payload: bytes,
+    release_epoch_attestation_payload: bytes,
     *,
     reviewer_public_keys: Mapping[str, bytes],
     required_review_signatures: int,
     status_authority_public_keys: Mapping[str, bytes],
     required_status_authority_signatures: int,
-    verification_epoch: int,
+    release_epoch_policy: ReleaseEpochPolicy,
 ) -> tuple[RetrievalRegressionComparison, ReviewedRetrievalSnapshotGateReceipt]:
-    """Require a current, non-revoked reviewer quorum before the retrieval gate."""
+    """Require authenticated release time and a current reviewer quorum."""
     baseline = load_retrieval_baseline_json(baseline_payload)
     attestation = load_inventory_review_attestation(inventory_review_payload)
     review_policy_sha256 = inventory_review_policy_sha256(
@@ -674,6 +686,19 @@ def gate_reviewed_candidate_snapshot(
         required_signatures=required_review_signatures,
     )
     key_status = load_reviewer_key_status_snapshot(reviewer_key_status_payload)
+    release_epoch = load_release_epoch_attestation(release_epoch_attestation_payload)
+    release_epoch_receipt = verify_release_epoch_attestation(
+        release_epoch,
+        candidate_snapshot_sha256=snapshot.artifact_sha256,
+        baseline_artifact_sha256=baseline.artifact_sha256,
+        inventory_review_sha256=attestation.attestation_sha256,
+        key_status_snapshot_sha256=key_status.snapshot_sha256,
+        policy=release_epoch_policy,
+        disallowed_public_keys=(
+            *reviewer_public_keys.values(),
+            *status_authority_public_keys.values(),
+        ),
+    )
     key_status_receipt = verify_reviewer_key_status_snapshot(
         key_status,
         expected_review_policy_sha256=review_policy_sha256,
@@ -681,7 +706,7 @@ def gate_reviewed_candidate_snapshot(
         required_active_key_ids=tuple(item.key_id for item in attestation.signatures),
         authority_public_keys=status_authority_public_keys,
         required_authority_signatures=required_status_authority_signatures,
-        verification_epoch=verification_epoch,
+        verification_epoch=release_epoch_receipt.verification_epoch,
     )
     review_sha256 = verify_inventory_review_attestation(
         attestation,
@@ -700,6 +725,9 @@ def gate_reviewed_candidate_snapshot(
         key_status_policy_sha256=key_status_receipt.status_policy_sha256,
         active_reviewer_key_count=key_status_receipt.active_key_count,
         revoked_reviewer_key_count=key_status_receipt.revoked_key_count,
+        release_epoch_attestation_sha256=release_epoch_receipt.attestation_sha256,
+        release_epoch_artifact_set_sha256=release_epoch_receipt.artifact_set_sha256,
+        release_epoch_policy_sha256=release_epoch_receipt.policy_sha256,
         verification_epoch=key_status_receipt.verification_epoch,
     )
     return comparison, receipt

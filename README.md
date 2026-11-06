@@ -482,7 +482,9 @@ quorum-signed, short-lived reviewer key-status snapshot must cover that exact po
 its authority-policy digest commits the independent authority keyring and threshold, so one
 compromised status key cannot revoke or bless reviewers alone. The gate rejects expired snapshots,
 authority-policy substitution, a missing authority quorum, and any review signed by a key marked
-revoked.
+revoked. A separate Ed25519 release-epoch statement replaces caller-supplied time at the high-level
+gate. It binds the asserted epoch to the exact candidate, baseline, inventory review, status
+snapshot, protected workflow context, and source revision under an independent release key.
 Candidate comparisons fail closed on identity drift and apply the correct direction to coverage
 and saturation metrics. `src/retrieval_gate.py` computes those commitments from a canonical case
 file and one consistent read-only SQLite snapshot, requires that snapshot to match a reviewed
@@ -559,6 +561,7 @@ src/retrieval_eval.py  relevance metrics + top-K source saturation diagnostics
 src/retrieval_baseline.py content-addressed retrieval regression baseline and gate
 src/retrieval_inventory_review.py authenticated reviewer-quorum decision
 src/reviewer_key_status.py signed reviewer freshness and revocation policy
+src/retrieval_release_epoch.py authenticated epoch bound to exact reviewed gate inputs
 src/retrieval_gate.py   reviewed-inventory corpus/case evaluator and CI gate command
 src/evaluate.py        labelled end-to-end evaluation
 src/conflicts.py       deterministic requirement contradictions
