@@ -129,17 +129,25 @@ comparison, receipt = gate_reviewed_candidate_snapshot(
     baseline_payload,
     inventory_review_payload,
     reviewer_key_status_payload,
+    release_epoch_attestation_payload,
     reviewer_public_keys=protected_reviewer_keyring,
     required_review_signatures=2,
     status_authority_public_keys=protected_status_authority_keyring,
     required_status_authority_signatures=2,
-    verification_epoch=trusted_verification_epoch,
+    release_epoch_policy=protected_release_epoch_policy,
 )
 ```
 
-The high-level gate first verifies a canonical, domain-separated Ed25519 status snapshot. The
+The high-level gate first verifies a canonical, domain-separated Ed25519 release-epoch statement.
+That statement binds the asserted verification epoch to the exact candidate snapshot, baseline,
+inventory review, reviewer-status snapshot, release-authority public key, repository, workflow,
+source ref, and source revision. The release-epoch key must be cryptographically distinct from every
+reviewer and status-authority key. Repository and workflow identities stay out of the gate receipt;
+their hashes are committed by the release-epoch policy digest.
+
+The gate then verifies the canonical, domain-separated Ed25519 status snapshot. The
 snapshot must cover the exact reviewer keyring, bind the review-policy digest, remain within a
-24-hour maximum validity window, be current at the supplied verification epoch, and satisfy the
+24-hour maximum validity window, be current at the authenticated release epoch, and satisfy the
 configured quorum of trusted authority keys. The snapshot binds a policy digest over the exact
 authority threshold, sorted key IDs, and distinct public-key fingerprints. Every authority key must
 also be cryptographically distinct from every reviewer key. Every signer in the inventory review
@@ -150,16 +158,19 @@ The authority policy accepts 2–8 distinct Ed25519 keys and requires a threshol
 key count. Version 1 single-authority snapshots are deliberately rejected; regenerate them under a
 reviewed version 2 authority policy instead of silently treating one old signature as a quorum.
 
-The wrapper receipt cross-binds the review, status snapshot, status policy, verification epoch and
-aggregate active/revoked counts, but not reviewer IDs, authority IDs, signatures, source names,
+The wrapper receipt cross-binds the review, status snapshot, status policy, release-epoch
+attestation, release-epoch policy, authenticated verification epoch and aggregate active/revoked
+counts, but not reviewer IDs, authority IDs, signatures, repository/workflow names, source names,
 queries, or content. Treat the reviewer keyring, both thresholds, status-authority keyring and
-verification epoch as protected deployment policy; accepting them from the untrusted change being
-reviewed would remove the trust boundary.
+release-epoch policy as protected deployment policy; accepting them from the untrusted change being
+reviewed would remove the trust boundary. The protected workflow must construct the statement only
+after checking its own immutable workflow revision and trusted clock source.
 
-A valid snapshot does not prove reviewer organizational independence, inventory authority or
-completeness, trustworthy time, or that a compromised authority quorum cannot collude. A protected
-release job should source time from authenticated infrastructure and eventually publish status
-snapshots or their commitments to an independently monitored transparency log.
+A valid statement authenticates which release authority asserted the epoch; it does not prove that
+the authority's clock is correct. A valid status snapshot also does not prove reviewer
+organizational independence, inventory authority or completeness, or that a compromised authority
+quorum cannot collude. The next hardening step is to publish accepted release-epoch and status
+commitments to an independently monitored transparency log.
 
 ## Fail-closed compatibility
 

@@ -32,6 +32,11 @@ from src.retrieval_inventory_review import (
     create_inventory_review_attestation,
     dump_inventory_review_attestation,
 )
+from src.retrieval_release_epoch import (
+    ReleaseEpochPolicy,
+    create_release_epoch_attestation,
+    dump_release_epoch_attestation,
+)
 from src.reviewer_key_status import (
     ReviewerKeyStatusError,
     create_reviewer_key_status_snapshot,
@@ -436,17 +441,38 @@ def test_reviewed_gate_requires_quorum_over_exact_inventory_and_baseline(
             )
         },
     )
+    release_epoch_private_key = Ed25519PrivateKey.generate()
+    release_epoch_policy = ReleaseEpochPolicy(
+        repository="cagataykavas/rag-document-intelligence",
+        workflow=".github/workflows/release-retrieval.yml",
+        source_ref="refs/heads/main",
+        source_revision=SOURCE_COMMIT,
+        key_id="retrieval-release-epoch-v1",
+        public_key=release_epoch_private_key.public_key().public_bytes(
+            Encoding.DER, PublicFormat.SubjectPublicKeyInfo
+        ),
+    )
+    release_epoch = create_release_epoch_attestation(
+        candidate_snapshot_sha256=snapshot.artifact_sha256,
+        baseline_artifact_sha256=baseline["artifact_sha256"],
+        inventory_review_sha256=review.attestation_sha256,
+        key_status_snapshot_sha256=key_status.snapshot_sha256,
+        verification_epoch=1_800_000_060,
+        policy=release_epoch_policy,
+        signer=release_epoch_private_key,
+    )
 
     comparison, receipt = gate_reviewed_candidate_snapshot(
         snapshot,
         baseline_payload,
         dump_inventory_review_attestation(review),
         dump_reviewer_key_status_snapshot(key_status),
+        dump_release_epoch_attestation(release_epoch),
         reviewer_public_keys=public_keys,
         required_review_signatures=2,
         status_authority_public_keys=status_authority_public_keys,
         required_status_authority_signatures=2,
-        verification_epoch=1_800_000_060,
+        release_epoch_policy=release_epoch_policy,
     )
 
     assert comparison.meets_policy is True
@@ -455,6 +481,8 @@ def test_reviewed_gate_requires_quorum_over_exact_inventory_and_baseline(
     assert receipt.key_status_snapshot_sha256 == key_status.snapshot_sha256
     assert receipt.active_reviewer_key_count == 3
     assert receipt.revoked_reviewer_key_count == 0
+    assert receipt.release_epoch_attestation_sha256 == release_epoch.attestation_sha256
+    assert receipt.release_epoch_policy_sha256 == release_epoch_policy.sha256
     serialized = json.dumps(receipt.to_audit_dict(), sort_keys=True)
     assert "access.md" not in serialized
     assert "retrieval-reviewer-a" not in serialized
@@ -477,15 +505,25 @@ def test_reviewed_gate_requires_quorum_over_exact_inventory_and_baseline(
             )
         },
     )
+    revoked_release_epoch = create_release_epoch_attestation(
+        candidate_snapshot_sha256=snapshot.artifact_sha256,
+        baseline_artifact_sha256=baseline["artifact_sha256"],
+        inventory_review_sha256=review.attestation_sha256,
+        key_status_snapshot_sha256=revoked_status.snapshot_sha256,
+        verification_epoch=1_800_000_060,
+        policy=release_epoch_policy,
+        signer=release_epoch_private_key,
+    )
     with pytest.raises(ReviewerKeyStatusError, match="revoked signer"):
         gate_reviewed_candidate_snapshot(
             snapshot,
             baseline_payload,
             dump_inventory_review_attestation(review),
             dump_reviewer_key_status_snapshot(revoked_status),
+            dump_release_epoch_attestation(revoked_release_epoch),
             reviewer_public_keys=public_keys,
             required_review_signatures=2,
             status_authority_public_keys=status_authority_public_keys,
             required_status_authority_signatures=2,
-            verification_epoch=1_800_000_060,
+            release_epoch_policy=release_epoch_policy,
         )
