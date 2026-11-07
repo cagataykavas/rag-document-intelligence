@@ -112,6 +112,56 @@ source inventory; regenerate and review a version 2 baseline instead of silently
 The comparison report contains only aggregate metrics, stable failure reasons, and
 content commitments—never queries, document IDs, chunk IDs, rankings, or text.
 
+## Paired uncertainty gate
+
+`src/retrieval_paired_regression.py` adds a statistical gate for larger suites where aggregate
+point estimates are insufficient. Create one ledger from each validated candidate snapshot and
+the exact canonical cases and rankings used to compute it:
+
+```python
+from src.retrieval_paired_regression import (
+    RetrievalPairedBootstrapPolicy,
+    compare_paired_retrieval_ledgers,
+    create_retrieval_score_ledger,
+)
+
+baseline_ledger = create_retrieval_score_ledger(
+    baseline_snapshot, canonical_cases, baseline_rankings
+)
+candidate_ledger = create_retrieval_score_ledger(
+    candidate_snapshot, canonical_cases, candidate_rankings
+)
+paired_policy = RetrievalPairedBootstrapPolicy(
+    confidence_level=0.95,
+    resamples=20_000,
+    thresholds=thresholds,
+)
+paired_comparison = compare_paired_retrieval_ledgers(
+    baseline_ledger, candidate_ledger, paired_policy
+)
+if not paired_comparison.meets_policy:
+    raise SystemExit(2)
+```
+
+Ledger creation validates the candidate snapshot, recomputes all eight metrics per case, and
+requires their aggregates to reproduce the snapshot exactly. It retains SHA-256 commitments to
+case IDs, case contents and top-K document rankings plus per-case scores; it does not retain raw
+queries, labels or document IDs. Loading a persisted ledger rejects extra fields, malformed ranges,
+noncanonical row order, duplicate cases and any digest change.
+
+Comparison requires the same K, corpus, reviewed inventory, evaluation commitment and exact
+case/content population. It samples the paired case indexes with a deterministic rejection sampler,
+preserving baseline/candidate correlation. A score-independent seed is derived from the fixed case
+commitment, method version and predeclared policy. Positive deltas always mean improvement, including
+the two lower-is-better saturation metrics. A metric fails only when its Bonferroni-adjusted
+one-sided upper bound is below the negative reviewed tolerance. The receipt binds the eight bounds,
+family-wise method, hypothesis count, seed, draw count, policy and both ledgers.
+
+Policies allow 1,000–100,000 resamples, but the comparator rejects more than five million total
+case draws before sampling. Choose the case suite, tolerances, confidence level and draw count before
+observing a candidate. The percentile bootstrap is an offline paired diagnostic, not a sequential
+test; repeatedly tuning against the same suite invalidates its stated error control.
+
 ## Independent inventory review quorum
 
 `src/retrieval_inventory_review.py` authenticates the review decision separately from the
@@ -232,8 +282,9 @@ comparing hand-entered metrics.
 
 The snapshot proves completeness only relative to the reviewed inventory. It cannot prove that the
 inventory's source selection is authoritative, current, or exhaustive, nor that labels are correct.
-The current gate compares point estimates and is appropriate for deterministic
-evaluation. It does not estimate uncertainty, correct for repeated tuning, or prove
-semantic diversity, source authority, answer quality, or production traffic performance.
-A larger stochastic benchmark should add a predeclared resampling or confidence-bound
-policy before using the same release gate.
+The aggregate gate compares point estimates and is appropriate for deterministic evaluation. The
+optional paired gate estimates case-sampling uncertainty for an unchanged sealed population, but
+does not correct for repeated tuning or prove semantic diversity, source authority, answer quality,
+or production traffic performance. Its reviewed policy must be predeclared and its score ledger
+must be produced alongside the snapshot; an aggregate-only historical result cannot be reconstructed
+into case-level evidence after the fact.
