@@ -489,7 +489,11 @@ Candidate comparisons fail closed on identity drift and apply the correct direct
 and saturation metrics. `src/retrieval_gate.py` computes those commitments from a canonical case
 file and one consistent read-only SQLite snapshot, requires that snapshot to match a reviewed
 source/content inventory, evaluates the exact rows, and exits nonzero when CI policy fails. Reports
-retain aggregate values and hashes only. `src/retrieval_release_log.py` re-runs that complete
+retain aggregate values and hashes only. For larger noisy suites,
+`src/retrieval_paired_regression.py` seals privacy-reduced case scores and runs a deterministic
+case-paired bootstrap across all eight retrieval and source-saturation metrics. Its one-sided
+Bonferroni bounds, reviewed tolerances, fixed-population checks, and bounded work budget prevent a
+point-estimate-only pass from hiding a statistically confident regression. `src/retrieval_release_log.py` re-runs that complete
 reviewed gate before atomically recording an accepted decision in an owner-only, head-CAS,
 hash-chained JSONL history. It makes exact release retries idempotent, rejects stale writers and
 non-advancing authenticated epochs, and retains commitments only. See

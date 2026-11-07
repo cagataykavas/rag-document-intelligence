@@ -204,6 +204,14 @@ def _validate_candidate_snapshot(snapshot: RetrievalCandidateSnapshot) -> None:
         raise RetrievalSnapshotError("candidate_snapshot_digest_mismatch")
 
 
+def validate_candidate_snapshot(snapshot: RetrievalCandidateSnapshot) -> None:
+    """Validate the integrity and bounds of a candidate snapshot."""
+
+    if not isinstance(snapshot, RetrievalCandidateSnapshot):
+        raise TypeError("snapshot must be RetrievalCandidateSnapshot")
+    _validate_candidate_snapshot(snapshot)
+
+
 def _read_regular_file(path: Path, maximum: int, code: str) -> bytes:
     flags = os.O_RDONLY | os.O_CLOEXEC
     if hasattr(os, "O_NOFOLLOW"):
