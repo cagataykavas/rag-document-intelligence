@@ -55,6 +55,7 @@ The engineering work is split into boundaries that can be tested independently:
 - **generation:** optional OpenAI-compatible adapter rather than provider lock-in;
 - **generation admission:** exact response schema, resource limits, type checks, citation allowlisting, content-bound evidence snapshots, per-claim citation completeness, and abstention consistency;
 - **admission authentication:** optional HMAC-SHA256 evidence with key IDs, rotation support, freshness checks, and constant-time verification;
+- **generation evidence replay:** independent reconstruction of payload, exact evidence, claim-span, decision, and optional HMAC commitments;
 - **citation integrity:** generated citation IDs are checked against retrieved evidence;
 - **claim support:** answer sentences are mapped back to their strongest cited chunk;
 - **untrusted evidence:** instruction-like document content is scanned and high-risk chunks are quarantined from generation;
@@ -172,6 +173,13 @@ snapshot commitments fail closed in the LLM path. The audit record includes clai
 claim-citation link counts plus stable reason codes, but does not copy generated
 answer text, source passages, or citation IDs into policy logs. This provides replay evidence without
 creating a second store of model-generated content.
+
+`src/generation_evidence_replay.py` can independently rerun that complete boundary
+from retained private inputs and emit a privacy-reduced verification receipt. This
+detects payload, evidence, policy, claim-span, decision, or authentication substitution
+without trusting the original service response. See
+[`docs/generation-evidence-replay.md`](docs/generation-evidence-replay.md) for the
+retention, freshness, and trust boundaries.
 
 New PDF ingestion keeps chunks within one extracted page and persists a half-open
 page-local UTF-8 range plus the normalized page-text digest. Retrieval exposes this
