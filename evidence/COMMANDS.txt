@@ -1,0 +1,12 @@
+# Commands executed in repository working directory
+python -m venv .venv
+.venv/bin/pip install -r requirements.txt
+curl -fL --max-time 60 https://scifact.s3-us-west-2.amazonaws.com/release/latest/data.tar.gz -o /tmp/scifact-data.tar.gz
+tar -xzf /tmp/scifact-data.tar.gz -C /tmp/scifact
+.venv/bin/python -m src.scifact_benchmark --data /tmp/scifact/data --output evidence/scifact-dev.json
+.venv/bin/pytest -q
+.venv/bin/ruff check src app tests
+.venv/bin/pip check
+.venv/bin/python -m compileall -q src app tests
+git diff --check
+# Docker not available: no container checks executed.

@@ -566,3 +566,16 @@ GitHub Actions runs without an external LLM key and checks:
 
 **RAG · chunking · hybrid retrieval · reranking · Recall@K · Precision@K · MRR · nDCG · zero-shot · one-shot · few-shot · prompt experiments · grounded generation · citation integrity · claim attribution · prompt injection · untrusted documents · evidence provenance · idempotent ingestion · FastAPI · SQLite · Docker · CI.**
 
+
+## External retrieval evidence: SciFact
+
+An independently labelled scientific-abstract retrieval diagnostic is available in
+[`evidence/PROTOCOL.md`](evidence/PROTOCOL.md), with complete rankings, exact input
+hashes, environment versions and paired uncertainty in
+[`evidence/scifact-dev.json`](evidence/scifact-dev.json).
+It indexes 5,183 abstracts and scores 188 evidence-bearing development claims;
+112 unlabelled-for-retrieval claims are explicitly excluded. The existing hybrid
+retriever achieved Recall@10 0.900 and nDCG@10 0.772, versus 0.872 and 0.731 for
+word-only TF-IDF. This comparison is not an official BEIR run, a generated-answer
+accuracy measurement, or a production deployment benchmark. Hybrid retrieval was
+substantially slower than word-only in the local run; see the full tradeoff.

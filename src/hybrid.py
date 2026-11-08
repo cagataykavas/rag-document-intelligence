@@ -73,7 +73,7 @@ class HybridSparseRetriever:
         candidates = list(np.argsort(fused)[::-1])
         selected: list[int] = []
         doc_counts: dict[str, int] = {}
-        while candidates and len(selected) < min(k, len(candidates)):
+        while candidates and len(selected) < k:
             best_position = max(
                 range(len(candidates)),
                 key=lambda position: (
