@@ -181,6 +181,12 @@ without trusting the original service response. See
 [`docs/generation-evidence-replay.md`](docs/generation-evidence-replay.md) for the
 retention, freshness, and trust boundaries.
 
+`python -m src.generation_replay_cli` adds a fail-closed operator path for AES-GCM
+encrypted replay bundles. It authenticates bounded private inputs, loads rotation
+keyrings outside command history, creates an owner-only receipt without overwriting
+existing evidence, and can delete the exact opened bundle only after the receipt is
+durable. The replay guide documents the envelope contract and deletion limitations.
+
 New PDF ingestion keeps chunks within one extracted page and persists a half-open
 page-local UTF-8 range plus the normalized page-text digest. Retrieval exposes this
 locator, and `evidence-snapshot/v2` binds its canonical digest to generation
