@@ -58,3 +58,70 @@ future replay is required. The receipt cannot recover deleted inputs and does no
 prove source authenticity, semantic entailment, factual correctness, or that the
 chosen evidence was complete. HMAC keys authenticate the producer but do not provide
 public-key non-repudiation.
+
+## Encrypted operator CLI
+
+`src.generation_replay_cli` provides the operator boundary for retained private
+inputs. It accepts only an AES-256-GCM envelope, authenticates the envelope before
+parsing its plaintext, reruns the replay verifier, and creates a new owner-only
+receipt without overwriting an existing review artifact.
+
+Decryption and admission-verification keys are loaded from separate environment
+keyrings so keys never appear in command history. Each value is a padded URL-safe
+base64 encoding of exactly 32 bytes:
+
+```bash
+export RAG_REPLAY_DECRYPT_KEYS='{"replay-2026-q4":"<base64-key>"}'
+export RAG_ADMISSION_VERIFY_KEYS='{"prod-2026-q4":"<base64-key>"}'
+
+python -m src.generation_replay_cli retained.bundle \
+  --receipt review/receipt.json
+```
+
+The admission keyring is required only when the private bundle contains an applied
+authentication envelope. Both keyrings are bounded to 16 keys and 16 KiB. In a
+production deployment, inject them from a secrets manager into the short-lived
+process environment and clear that environment after execution.
+
+The encrypted file must be owned by the operator process, be a regular single-link
+file, have no group or other permissions, and be at most 64 MiB. Symlinks, hard links,
+unsafe permissions,
+duplicate JSON fields, unknown fields, unrecognized key IDs, noncanonical evidence
+rows, and invalid GCM tags fail closed. The receipt is created with mode `0600`,
+synced before success, and never contains the payload, evidence text, chunk IDs,
+source names, or keys.
+
+For an explicitly approved retention workflow, the operator can request deletion:
+
+```bash
+python -m src.generation_replay_cli retained.bundle \
+  --receipt review/receipt.json \
+  --delete-private-bundle-after-success
+```
+
+Deletion occurs only after the receipt and its parent directory have been synced;
+the bundle's parent directory is also synced after unlinking.
+Immediately before unlinking, the CLI verifies that the path still names the exact
+device and inode it opened. A failed verification or receipt write leaves the bundle
+in place. Unlinking is not cryptographic erasure: filesystem snapshots, backups,
+journals, page caches, and storage replicas can retain plaintext or ciphertext, so
+their lifecycle must be governed separately.
+
+### Bundle contract
+
+Producers can use `seal_private_replay_bundle` or implement the same contract. The
+outer JSON has exactly `schema_version`, `key_id`, `nonce_b64`, and
+`ciphertext_b64`. AES-GCM additional authenticated data is the canonical JSON object
+containing the outer schema version and key ID. Nonces must be 12 random bytes and
+must never repeat for the same key.
+
+The decrypted `generation-replay-private-bundle/v1` object contains exactly:
+
+- `payload`: the original model payload;
+- `evidence`: exact `chunk_id`, `source`, `text`, and `source_locator` rows;
+- `expected_admission_audit`: the original content-minimizing audit;
+- `authentication`: the original authentication envelope or `null`.
+
+This CLI writes a durable standalone receipt. It does not yet append receipts to a
+multi-writer review ledger or provide a retention scheduler; those controls belong
+in a separately authenticated store with compare-and-set or transactional ordering.
