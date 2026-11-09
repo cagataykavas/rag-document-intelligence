@@ -256,6 +256,36 @@ python -m src.evaluate \
 
 Retrieval evaluation is deliberately independent from LLM fluency. A nice paragraph cannot rescue a retriever that failed to surface the relevant document.
 
+### Retrieval repeatability gate
+
+`evaluate_ranking_stability` repeats one fixed query against the same corpus and retriever
+configuration, then measures every trial pair rather than comparing only with a favored baseline:
+
+- exact ordered top-K agreement, which exposes unstable tie-breaking;
+- mean and worst-pair top-K Jaccard overlap; and
+- maximum score drift for chunks present in both top-K lists.
+
+`gate_ranking_stability` applies reviewed minimum overlap/agreement and maximum score-delta
+thresholds, returning stable failure codes alongside the complete metrics and policy. Evidence is
+rejected when trials are too few or unbounded, ranks contain duplicate chunk IDs, scores are
+non-finite/negative, or results are not ordered by descending score.
+
+```python
+metrics = evaluate_ranking_stability(repeated_rankings, k=5)
+decision = gate_ranking_stability(
+    metrics,
+    min_exact_order_pair_rate=1.0,
+    min_mean_jaccard_at_k=0.95,
+    min_pairwise_jaccard_at_k=0.90,
+    max_common_score_delta=1e-6,
+)
+```
+
+This is repeatability evidence, not relevance evidence: a consistently bad ranking can pass. Trials
+must hold the query, corpus snapshot, retriever version and configuration fixed. Same-process runs
+also share the host and dependency state; production follow-up should repeat the audit across
+independently identified workers and bind those environment identities to the report.
+
 ## Requirement conflict analysis
 
 `src/conflicts.py` implements a deterministic pre-LLM contradiction layer. Candidate requirements need sufficient lexical overlap before checks for:
