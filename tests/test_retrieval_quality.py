@@ -13,8 +13,15 @@ from src.store import DocumentStore
 
 def test_hybrid_retriever_exposes_word_and_character_scores():
     chunks = [
-        Chunk("a:0", "a", "security.md", "REQ-42X administrative authentication is mandatory"),
-        Chunk("b:0", "b", "latency.md", "API latency shall remain below 250 milliseconds"),
+        Chunk(
+            "a:0",
+            "a",
+            "security.md",
+            "REQ-42X administrative authentication is mandatory",
+        ),
+        Chunk(
+            "b:0", "b", "latency.md", "API latency shall remain below 250 milliseconds"
+        ),
     ]
     results = HybridSparseRetriever().fit(chunks).search("REQ42X authentication", k=2)
     assert results[0]["doc_id"] == "a"
@@ -51,7 +58,9 @@ def test_ranked_retrieval_metrics_include_mrr_and_ndcg():
     assert 0.0 < metrics.ndcg_at_k < 1.0
 
 
-def test_engine_reports_rejected_llm_citations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_engine_fails_closed_on_rejected_llm_citations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     store = DocumentStore(tmp_path / "rag.db")
     store.ingest(
         ParsedDocument(
@@ -74,7 +83,11 @@ def test_engine_reports_rejected_llm_citations(tmp_path: Path, monkeypatch: pyte
         }
 
     monkeypatch.setattr(OpenAICompatibleGenerator, "generate", fake_generate)
-    answer = RAGEngine(store).answer("Do admin endpoints require authentication?", use_llm=True)
-    assert answer.citations == (valid_chunk_id,)
+    answer = RAGEngine(store).answer(
+        "Do admin endpoints require authentication?", use_llm=True
+    )
+    assert answer.insufficient_evidence is True
+    assert answer.citations == ()
     assert answer.rejected_citations == ("fabricated:404",)
-    assert answer.citation_audit["citation_validity_rate"] == pytest.approx(0.5)
+    assert answer.citation_audit["citations"] == ()
+    assert "citation_not_allowed" in answer.generation_admission["reasons"]
