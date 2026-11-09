@@ -63,8 +63,9 @@ public-key non-repudiation.
 
 `src.generation_replay_cli` provides the operator boundary for retained private
 inputs. It accepts only an AES-256-GCM envelope, authenticates the envelope before
-parsing its plaintext, reruns the replay verifier, and creates a new owner-only
-receipt without overwriting an existing review artifact.
+parsing its plaintext, reruns the replay verifier, and writes the privacy-reduced
+result either as a new owner-only receipt or as one entry in a transactional review
+ledger.
 
 Decryption and admission-verification keys are loaded from separate environment
 keyrings so keys never appear in command history. Each value is a padded URL-safe
@@ -107,6 +108,47 @@ in place. Unlinking is not cryptographic erasure: filesystem snapshots, backups,
 journals, page caches, and storage replicas can retain plaintext or ciphertext, so
 their lifecycle must be governed separately.
 
+### Transactional review ledger
+
+Standalone receipts are useful for transfer, but they do not establish ordering for
+multiple reviewers. Use `--ledger` instead of `--receipt` when concurrent review
+workers share one local POSIX filesystem:
+
+```bash
+install -d -m 0700 review
+
+python -m src.generation_replay_cli retained.bundle \
+  --ledger review/generation-replay.jsonl \
+  --expected-ledger-head 0000000000000000000000000000000000000000000000000000000000000000
+```
+
+The command prints the committed `ledger_head_sha256`. Preserve that head outside
+the writer and supply it as `--expected-ledger-head` for the next distinct receipt.
+An exact retry is idempotent even if its caller still has the old head; a different
+receipt with a stale head fails closed.
+
+Each append strictly validates the replay receipt and its self-digest before opening
+the log. It then opens the owner-only immediate parent directory without following a
+symlink, acquires an exclusive advisory lock, verifies the complete canonical chain,
+compares the caller-observed head, appends one bounded entry, and syncs both file and
+directory before reporting success. Entries contain only replay, payload, evidence,
+claim-support, decision, and chain commitments plus bounded counts, booleans, and
+sequence numbers. Sixteen
+concurrent exact retries therefore produce one physical entry and one head.
+
+The ledger is bounded to 8,192 entries and 4 MiB. It rejects partial writes,
+noncanonical or duplicate-key JSON, reordered or deleted entries, unknown fields,
+digest substitution, symlinks, hard links, non-owner files, and group/world-accessible
+files or immediate parent directories. `--delete-private-bundle-after-success`
+deletes the exact encrypted bundle only after the ledger append is durable.
+
+This is an integrity and stale-writer boundary for cooperating local processes, not
+a public transparency log. A privileged filesystem administrator can replace both
+the log and an unpinned head, advisory locks are not a distributed consensus
+protocol, and intermediate ancestor symlinks or network filesystem semantics remain
+deployment concerns. Authenticate append workers and checkpoint heads to separately
+controlled immutable storage before treating this as a cross-host audit system.
+
 ### Bundle contract
 
 Producers can use `seal_private_replay_bundle` or implement the same contract. The
@@ -122,6 +164,6 @@ The decrypted `generation-replay-private-bundle/v1` object contains exactly:
 - `expected_admission_audit`: the original content-minimizing audit;
 - `authentication`: the original authentication envelope or `null`.
 
-This CLI writes a durable standalone receipt. It does not yet append receipts to a
-multi-writer review ledger or provide a retention scheduler; those controls belong
-in a separately authenticated store with compare-and-set or transactional ordering.
+The CLI does not provide a retention scheduler or authenticate who requested an
+append. Those controls belong in protected orchestration, and retained heads should
+be checkpointed outside the ledger writer's trust boundary.

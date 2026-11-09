@@ -183,9 +183,11 @@ retention, freshness, and trust boundaries.
 
 `python -m src.generation_replay_cli` adds a fail-closed operator path for AES-GCM
 encrypted replay bundles. It authenticates bounded private inputs, loads rotation
-keyrings outside command history, creates an owner-only receipt without overwriting
-existing evidence, and can delete the exact opened bundle only after the receipt is
-durable. The replay guide documents the envelope contract and deletion limitations.
+keyrings outside command history, and can either create an owner-only standalone
+receipt or append it to a locked, hash-chained review ledger with compare-and-set
+head protection. The exact opened bundle can be deleted only after the selected
+output is durable. The replay guide documents the ledger, envelope, and deletion
+limitations.
 
 New PDF ingestion keeps chunks within one extracted page and persists a half-open
 page-local UTF-8 range plus the normalized page-text digest. Retrieval exposes this
@@ -566,6 +568,9 @@ src/hybrid.py          word+character hybrid sparse retrieval
 src/evidence_policy.py untrusted-document risk policy
 src/evidence_snapshot.py bounded content commitments for admitted evidence
 src/generation_policy.py fail-closed model-response admission + decision digests
+src/generation_evidence_replay.py independent private-input replay verification
+src/generation_replay_cli.py encrypted operator replay boundary
+src/generation_replay_log.py transactional hash-chained replay review history
 src/admission_authentication.py HMAC authentication + durable replay consumption
 src/grounding.py       citation integrity + answer-level lexical support
 src/claims.py          claim-to-exact-source-span commitments and verification
@@ -602,6 +607,7 @@ GitHub Actions runs without an external LLM key and checks:
 - bounded streaming of OpenAI-compatible responses before JSON decoding;
 - HMAC evidence verification and concurrent single-use replay enforcement;
 - deterministic claim-to-source-span tracing and authenticated commitments;
+- independent generation replay plus concurrent hash-chained review-ledger appends;
 - page-bounded PDF chunking and content-bound page locators;
 - prompt-injection quarantine behavior;
 - zero/one/few-shot evaluation harness;

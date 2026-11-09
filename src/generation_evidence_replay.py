@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 from collections.abc import Iterable, Mapping
 from typing import Any
 
@@ -22,6 +23,23 @@ from src.generation_policy import (
 from src.prompting import EvidenceSnippet
 
 SCHEMA_VERSION = "generation-evidence-replay/v1"
+_DIGEST_RE = re.compile(r"[0-9a-f]{64}\Z")
+_RECEIPT_FIELDS = frozenset(
+    {
+        "schema_version",
+        "applied",
+        "verified",
+        "accepted",
+        "authentication_verified",
+        "evidence_chunk_count",
+        "claim_count",
+        "payload_sha256",
+        "evidence_snapshot_sha256",
+        "claim_support_sha256",
+        "decision_sha256",
+        "receipt_sha256",
+    }
+)
 
 
 class GenerationEvidenceReplayError(ValueError):
@@ -49,7 +67,9 @@ def _sha256(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
-def _normalized_audit(audit: Mapping[str, object], fields: set[str]) -> dict[str, object]:
+def _normalized_audit(
+    audit: Mapping[str, object], fields: set[str]
+) -> dict[str, object]:
     if not isinstance(audit, Mapping) or set(audit) != fields:
         raise GenerationEvidenceReplayError("ADMISSION_AUDIT_INVALID")
     normalized = dict(audit)
@@ -58,6 +78,43 @@ def _normalized_audit(audit: Mapping[str, object], fields: set[str]) -> dict[str
         raise GenerationEvidenceReplayError("ADMISSION_AUDIT_INVALID")
     normalized["reasons"] = list(reasons)
     return normalized
+
+
+def validate_generation_evidence_receipt(
+    receipt: Mapping[str, object],
+) -> dict[str, object]:
+    """Strictly validate a persisted replay receipt and its self-commitment."""
+
+    if not isinstance(receipt, Mapping) or set(receipt) != _RECEIPT_FIELDS:
+        raise GenerationEvidenceReplayError("RECEIPT_INVALID")
+    document = dict(receipt)
+    if (
+        document["schema_version"] != SCHEMA_VERSION
+        or document["applied"] is not True
+        or document["verified"] is not True
+        or type(document["accepted"]) is not bool
+        or type(document["authentication_verified"]) is not bool
+        or type(document["evidence_chunk_count"]) is not int
+        or not 1 <= document["evidence_chunk_count"] <= 50
+        or type(document["claim_count"]) is not int
+        or not 0 <= document["claim_count"] <= 32
+        or any(
+            not isinstance(document[field], str)
+            or _DIGEST_RE.fullmatch(document[field]) is None
+            for field in (
+                "payload_sha256",
+                "evidence_snapshot_sha256",
+                "claim_support_sha256",
+                "decision_sha256",
+                "receipt_sha256",
+            )
+        )
+    ):
+        raise GenerationEvidenceReplayError("RECEIPT_INVALID")
+    claimed = document.pop("receipt_sha256")
+    if not hmac.compare_digest(claimed, _sha256(_canonical_json(document))):
+        raise GenerationEvidenceReplayError("RECEIPT_INVALID")
+    return dict(receipt)
 
 
 def replay_generation_evidence(
