@@ -1,0 +1,144 @@
+"""Optional pinned local encoder and exact cosine retrieval; no remote code execution."""
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import asdict
+from pathlib import Path
+from typing import ClassVar
+
+import numpy as np
+
+from src.retrieval import Chunk
+
+MODEL_ID = 'sentence-transformers/all-MiniLM-L6-v2'
+MODEL_REVISION = 'c9745ed1d9f207416be6d2e6f8de32d1f16199bf'
+MAX_LENGTH = 256
+
+
+def normalize(vectors):
+    vectors = np.asarray(vectors, dtype=np.float32)
+    if vectors.ndim != 2 or not np.isfinite(vectors).all():
+        raise ValueError('finite 2D embeddings required')
+    with np.errstate(over='ignore', invalid='ignore'):
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    if not np.isfinite(norms).all() or np.any(norms == 0):
+        raise ValueError('zero or nonfinite embedding norms are invalid')
+    normalized = vectors / norms
+    if not np.allclose(np.linalg.norm(normalized, axis=1), 1., atol=1e-5):
+        raise ValueError('embedding normalization failed')
+    return normalized
+
+
+class MiniLMEncoder:
+    """Model-card pooling, 256-token truncation and float32 CPU inference."""
+
+    dimension = 384
+    signature: ClassVar[dict] = {'model': MODEL_ID, 'revision': MODEL_REVISION, 'max_length': MAX_LENGTH,
+                 'pooling': 'attention_mask_mean', 'normalize': True, 'dtype': 'float32'}
+
+    def __init__(self, *, batch_size=32, threads=1):
+        if batch_size < 1 or threads < 1:
+            raise ValueError('batch size and threads must be positive')
+        import torch
+        from transformers import AutoModel, AutoTokenizer
+        torch.set_num_threads(threads)
+        torch.manual_seed(2026)
+        torch.use_deterministic_algorithms(True)
+        self.torch = torch
+        self.batch_size = batch_size
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            MODEL_ID, revision=MODEL_REVISION, trust_remote_code=False)
+        self.model = AutoModel.from_pretrained(
+            MODEL_ID, revision=MODEL_REVISION, trust_remote_code=False,
+            use_safetensors=True).to('cpu').float().eval()
+
+    def encode(self, texts):
+        batches = []
+        with self.torch.inference_mode():
+            for start in range(0, len(texts), self.batch_size):
+                tokens = self.tokenizer(texts[start:start + self.batch_size], padding=True,
+                                        truncation=True, max_length=MAX_LENGTH, return_tensors='pt')
+                hidden = self.model(**tokens).last_hidden_state
+                mask = tokens['attention_mask'].unsqueeze(-1).to(hidden.dtype)
+                pooled = (hidden * mask).sum(1) / mask.sum(1).clamp(min=1e-9)
+                batches.append(pooled.cpu().numpy())
+        if not batches:
+            raise ValueError('nonempty input required')
+        return normalize(np.concatenate(batches))
+
+
+class DenseRetriever:
+    def __init__(self, encoder, cache_dir: Path | None = None):
+        self.encoder = encoder
+        self.cache_dir = cache_dir
+        self.matrix = None
+        self.chunks = []
+        self.cache_hit = False
+
+    def fit(self, chunks: list[Chunk]):
+        if not chunks or len({c.chunk_id for c in chunks}) != len(chunks):
+            raise ValueError('nonempty unique chunk IDs required')
+        payload = {'encoder': self.encoder.signature, 'chunks': [asdict(c) for c in chunks]}
+        self.cache_key = hashlib.sha256(json.dumps(payload, sort_keys=True,
+                                                    ensure_ascii=False).encode()).hexdigest()
+        cache = self.cache_dir / (self.cache_key + '.npy') if self.cache_dir else None
+        manifest = cache.with_suffix('.json') if cache else None
+        self.cache_hit = False
+        if cache and cache.exists() and manifest.exists():
+            metadata = json.loads(manifest.read_text())
+            if metadata.get('signature') != self.encoder.signature:
+                raise ValueError('embedding cache signature mismatch')
+            if metadata['sha256'] != hashlib.sha256(cache.read_bytes()).hexdigest():
+                raise ValueError('embedding cache checksum mismatch')
+            matrix = np.load(cache, allow_pickle=False)
+            if matrix.ndim != 2 or matrix.shape[1] != getattr(self.encoder, "dimension", matrix.shape[1]):
+                raise ValueError("embedding dimension mismatch")
+            if matrix.shape[0] != len(chunks):
+                raise ValueError('embedding cache row mismatch')
+            normalize(matrix)  # validate, but preserve exact stored values
+            if not np.allclose(np.linalg.norm(matrix, axis=1), 1, atol=1e-5):
+                raise ValueError('embedding cache is not normalized')
+            self.cache_hit = True
+        else:
+            matrix = normalize(self.encoder.encode([c.text for c in chunks]))
+            if matrix.ndim != 2 or matrix.shape[1] != getattr(self.encoder, "dimension", matrix.shape[1]):
+                raise ValueError("embedding dimension mismatch")
+            if matrix.shape[0] != len(chunks):
+                raise ValueError('encoder row mismatch')
+            if cache:
+                cache.parent.mkdir(parents=True, exist_ok=True)
+                np.save(cache, matrix, allow_pickle=False)
+                manifest.write_text(json.dumps({'sha256': hashlib.sha256(cache.read_bytes()).hexdigest(),
+                                                'signature': self.encoder.signature}, indent=2) + '\n')
+        self.matrix, self.chunks = matrix, list(chunks)
+        self.vector_sha256 = hashlib.sha256(matrix.tobytes()).hexdigest()
+        return self
+
+    def search(self, query, k=10):
+        if self.matrix is None:
+            raise RuntimeError('fit must be called before search')
+        if k < 1:
+            raise ValueError('k must be positive')
+        vector = normalize(self.encoder.encode([query]))[0]
+        scores = self.matrix @ vector
+        order = sorted(range(len(scores)), key=lambda i: (-float(scores[i]), self.chunks[i].doc_id,
+                                                        self.chunks[i].chunk_id))[:k]
+        return [dict(asdict(self.chunks[i]), score=float(scores[i])) for i in order]
+
+
+def reciprocal_rank_fusion(*rankings, k=10, rank_constant=60):
+    if k < 1 or rank_constant < 0:
+        raise ValueError('invalid RRF settings')
+    scores, rows = {}, {}
+    for ranking in rankings:
+        seen = set()
+        for rank, row in enumerate(ranking, 1):
+            doc_id = str(row['doc_id'])
+            if doc_id in seen:
+                continue
+            seen.add(doc_id)
+            rows.setdefault(doc_id, row)
+            scores[doc_id] = scores.get(doc_id, 0.) + 1. / (rank_constant + rank)
+    return [dict(rows[d], score=scores[d])
+            for d in sorted(scores, key=lambda d: (-scores[d], d))[:k]]

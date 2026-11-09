@@ -1,0 +1,10 @@
+# Run from repository root. Install base requirements and optional requirements-dense.txt.
+# Exact measured inference invocation (HF_HOME and cache directory are local, not committed):
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 HF_HOME=../hf-cache python -u -m src.dense_benchmark --data /tmp/scifact/data --output evidence/scifact-dense-dev.json --cache ../dense-cache --threads 1 --batch-size 32
+# Final-code ranking replay (contents preserved as a text artifact; adjust data/cache paths if needed):
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 HF_HOME=../hf-cache PYTHONPATH=. python evidence/dense-replay-command.py.txt
+# Validation:
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 pytest -q
+ruff check src app tests
+# Ruff version pinned by requirements.txt: 0.12.11. Shared environment newer Ruff 0.17.4
+# found 38 pre-existing baseline violations; new dense source/tests pass that newer checker.

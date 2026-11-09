@@ -16,7 +16,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - run: ruff check src app tests
+      - run: ruff check src app tests tools
+      - run: python tools/restore_evidence.py
       - run: pytest -q
       - run: docker compose config
       - run: docker build -t rag-document-intelligence:test .

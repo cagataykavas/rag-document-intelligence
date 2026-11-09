@@ -1,0 +1,24 @@
+import hashlib,json
+from pathlib import Path
+from src.dense import MiniLMEncoder,DenseRetriever,reciprocal_rank_fusion
+from src.scifact_benchmark import load_scifact
+r=json.loads(Path('evidence/scifact-dense-dev.json').read_text())
+chunks,cases,ids,_=load_scifact(Path('/tmp/scifact/data'))
+encoder=MiniLMEncoder(threads=1,batch_size=32)
+dense=DenseRetriever(encoder,Path('../dense-cache')).fit(chunks)
+assert dense.cache_hit
+assert dense.vector_sha256==r['models']['dense']['vector_sha256']
+for i,case in enumerate(cases):
+ rows=dense.search(case.query,k=100)
+ assert [row['doc_id'] for row in rows]==r['models']['dense']['rankings'][i]['retrieved']
+ word=[{'doc_id':d} for d in r['models']['word']['rankings'][i]['retrieved']]
+ assert [row['doc_id'] for row in reciprocal_rank_fusion(word,rows,k=10)]==r['models']['rrf']['rankings'][i]['retrieved']
+out={'status':'passed','queries':len(cases),'dense_top_100_exact_parity':True,'rrf_top_10_exact_parity':True,'cached_corpus_vector_sha256_unchanged':dense.vector_sha256,'measured_dense_code_sha256':r['code_sha256']['src/dense.py'],'hardened_dense_code_sha256':hashlib.sha256(Path('src/dense.py').read_bytes()).hexdigest(),'note':'After timed run: reject overflow/nonunit norms, wrong declared dimensions and mismatched cache signatures. Arithmetic unchanged for valid vectors. Final code replay matches all measured dense/RRF rankings. No post-hardening timing claim.'}
+baseline=json.loads(Path('evidence/scifact-dev.json').read_text())
+assert r['files_sha256']==baseline['files_sha256']
+for name in ('word','hybrid'):
+ assert r['models'][name]['metrics']==baseline['models'][name]['metrics']
+ assert all(x['retrieved'][:10]==y['retrieved'][:10] for x,y in zip(r['models'][name]['rankings'],baseline['models'][name]['rankings'],strict=True))
+out.update(sparse_baseline_all_metrics_exact_parity=True,sparse_baseline_top_10_exact_parity=True,same_scifact_input_hashes=True)
+Path('evidence/dense-postrun-validation.json').write_text(json.dumps(out,indent=2)+'\n')
+print(out)

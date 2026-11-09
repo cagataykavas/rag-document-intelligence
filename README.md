@@ -579,3 +579,16 @@ retriever achieved Recall@10 0.900 and nDCG@10 0.772, versus 0.872 and 0.731 for
 word-only TF-IDF. This comparison is not an official BEIR run, a generated-answer
 accuracy measurement, or a production deployment benchmark. Hybrid retrieval was
 substantially slower than word-only in the local run; see the full tradeoff.
+
+### Optional local dense retrieval diagnostic
+
+The pinned MiniLM exact-cosine and word+dense reciprocal-rank-fusion benchmark
+reuses the SciFact corpus, metrics and sparse baselines. See
+[evaluation protocol](evidence/DENSE_PROTOCOL.md) for methodology, truncation,
+cache integrity, reproduction commands and limitations. This is exposed-development
+retrieval evaluation, not generated-answer accuracy or production performance.
+
+## Materialize public evidence
+
+Before tests or artifact audits, run `python tools/restore_evidence.py`.
+See [lossless evidence packaging](docs/evidence-packaging.md) for verification details.

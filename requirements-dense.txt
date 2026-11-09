@@ -1,0 +1,3 @@
+# Optional local dense benchmark; CPU builds can use the official PyTorch CPU index.
+torch==2.15.0
+transformers==5.22.2

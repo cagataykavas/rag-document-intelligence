@@ -1,0 +1,129 @@
+{
+  "format": 1,
+  "path": "evidence/scifact-dense-dev.json",
+  "bytes": 1119563,
+  "sha256": "8bcf855027457991ec4e8e71ed128cc676703f6b44c56de0b09c3bf281d06782",
+  "git_blob_sha1": "e2e35f48e7216ada1398cfd24630d668055edfff",
+  "chunks": [
+    {
+      "path": "evidence/packed/part-0000.txt",
+      "bytes": 48000,
+      "sha256": "9934ba57493d81f36af2551b5d90a14cae2e7e37ae17b1714bb71fe04a023738"
+    },
+    {
+      "path": "evidence/packed/part-0001.txt",
+      "bytes": 48000,
+      "sha256": "8ee17dfd0f3da4033fda52a0f58369e59b024c7ed9be00ff3c3e956cb9b00c04"
+    },
+    {
+      "path": "evidence/packed/part-0002.txt",
+      "bytes": 48000,
+      "sha256": "7c64f65af60684ced085725b6e8d9295960126664c250dad9a155b9bc30bd0cd"
+    },
+    {
+      "path": "evidence/packed/part-0003.txt",
+      "bytes": 48000,
+      "sha256": "2f6deef398daed24dee889ca18c2dd9baa382d12ed99e428b8e69c7ce684b27c"
+    },
+    {
+      "path": "evidence/packed/part-0004.txt",
+      "bytes": 48000,
+      "sha256": "4846131fa3bb36cca8c784bbc82befe77a936bf03420eff073a45211db3f0a08"
+    },
+    {
+      "path": "evidence/packed/part-0005.txt",
+      "bytes": 48000,
+      "sha256": "820a908c8f926799d9fe421356b3a17cc092c74a90e22074d235cba0adfc42db"
+    },
+    {
+      "path": "evidence/packed/part-0006.txt",
+      "bytes": 48000,
+      "sha256": "9e3dfbbdac5f854e4ca8ece047637ec4d76595660c04d75e7a91a1124db22ea9"
+    },
+    {
+      "path": "evidence/packed/part-0007.txt",
+      "bytes": 48000,
+      "sha256": "94cb20b082fe2778927fb131f7a3b82871a83da33d4e0943ff6f38c2b04ebcfc"
+    },
+    {
+      "path": "evidence/packed/part-0008.txt",
+      "bytes": 48000,
+      "sha256": "d033fd1687650aeed02890698eb9a9983f07ad7ee5b115d7ff541cfb87054766"
+    },
+    {
+      "path": "evidence/packed/part-0009.txt",
+      "bytes": 48000,
+      "sha256": "9f5ac21153fa931b75365fee1562cf1b6f6376eff82fdbcf17250755fc6310b4"
+    },
+    {
+      "path": "evidence/packed/part-0010.txt",
+      "bytes": 48000,
+      "sha256": "fdd0862999cbc1385eeb65d2bef2171e14d6e233a668cfe245a562bec6619989"
+    },
+    {
+      "path": "evidence/packed/part-0011.txt",
+      "bytes": 48000,
+      "sha256": "f7e4e8bb4ceef5ef3d9eb7b29d0fef237e837b5827c62ea520c85838db3cb617"
+    },
+    {
+      "path": "evidence/packed/part-0012.txt",
+      "bytes": 48000,
+      "sha256": "bfde6f62d60db2563e822412d7b91d3d930be5bf8e3ac2874f0982a3139c8e64"
+    },
+    {
+      "path": "evidence/packed/part-0013.txt",
+      "bytes": 48000,
+      "sha256": "b8ef92bcba1439bc4756a905801893a65e22049dac57e0dd3e39b6e719f09f9c"
+    },
+    {
+      "path": "evidence/packed/part-0014.txt",
+      "bytes": 48000,
+      "sha256": "b40038feac09bb01d27c8e83eb1eeefce0998d87bf8135ad469dd128fa79869e"
+    },
+    {
+      "path": "evidence/packed/part-0015.txt",
+      "bytes": 48000,
+      "sha256": "3e559e911a1e7ce3377d85bf701f6939c3e422838d430e40ceaf7912ec8b0566"
+    },
+    {
+      "path": "evidence/packed/part-0016.txt",
+      "bytes": 48000,
+      "sha256": "8cf400859e69d4a23570fdb4b86d2c6a7b5db0d430d07a78f41a768da01b23fc"
+    },
+    {
+      "path": "evidence/packed/part-0017.txt",
+      "bytes": 48000,
+      "sha256": "2e73af691b434a2f6d7d25cebed4c4945fa7dbba0609a6817b8d330643a851e6"
+    },
+    {
+      "path": "evidence/packed/part-0018.txt",
+      "bytes": 48000,
+      "sha256": "cb78197b771fed77565ac007bd27bdb4da1562cb7a6317d94a088f05110d39b3"
+    },
+    {
+      "path": "evidence/packed/part-0019.txt",
+      "bytes": 48000,
+      "sha256": "5d6d7de71ba22c2c24d05cb012e0e1c60e0bb8e1f6fe37a76dc4e079c883faca"
+    },
+    {
+      "path": "evidence/packed/part-0020.txt",
+      "bytes": 48000,
+      "sha256": "b97640bf99da4deede3bd754819df49f5c6b0170dd93265b9c8a37589a256a20"
+    },
+    {
+      "path": "evidence/packed/part-0021.txt",
+      "bytes": 48000,
+      "sha256": "c59616bc1c730ecd01e043e96938cd4e45dee3debe1ddc2a8d93fec523f9f290"
+    },
+    {
+      "path": "evidence/packed/part-0022.txt",
+      "bytes": 48000,
+      "sha256": "84f20f697f211445de8872170d04b24166d1226eaba4d389e706ef4fdf4c825a"
+    },
+    {
+      "path": "evidence/packed/part-0023.txt",
+      "bytes": 15563,
+      "sha256": "4f6d1124f11785b2966bb35140da20eda729da88c3d374303f0c59fde27605af"
+    }
+  ]
+}
