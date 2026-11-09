@@ -1,0 +1,71 @@
+Loading weights:   0%|          | 0/290 [00:00<?, ?it/s]Loading weights: 100%|██████████| 290/290 [00:00<00:00, 5160.86it/s]
+fixed_top3 1180 None False
+agent 1180 None False
+fixed_top3 343 None False
+agent 343 None False
+fixed_top3 475 None False
+agent 475 None False
+fixed_top3 386 None False
+agent 386 None False
+fixed_top3 1266 None False
+agent 1266 None False
+fixed_top3 1062 None False
+agent 1062 None False
+fixed_top3 641 None False
+agent 641 None False
+fixed_top3 904 None False
+agent 904 None False
+fixed_top3 1359 None False
+agent 1359 None False
+fixed_top3 847 None False
+agent 847 None False
+fixed_top3 532 None False
+agent 532 None False
+fixed_top3 1029 None False
+agent 1029 None False
+fixed_top3 1370 None False
+agent 1370 None False
+fixed_top3 1110 None False
+agent 1110 None False
+fixed_top3 1137 None False
+agent 1137 None False
+fixed_top3 1303 None False
+agent 1303 None False
+fixed_top3 1213 None False
+agent 1213 None False
+fixed_top3 1197 None False
+agent 1197 None False
+fixed_top3 560 None False
+agent 560 None False
+fixed_top3 72 None False
+agent 72 None False
+fixed_top3 1395 None False
+agent 1395 None False
+fixed_top3 36 None False
+agent 36 None False
+fixed_top3 1179 None False
+agent 1179 None False
+fixed_top3 659 None False
+agent 659 None False
+{
+  "fixed_top3": {
+    "n": 24,
+    "label_correct": 0,
+    "evidence_complete_correct": 0,
+    "model_calls": 24,
+    "invalid_or_failed_steps": 24,
+    "generation_seconds": 351.12898994900206,
+    "completed": 0,
+    "abstentions": 0
+  },
+  "agent": {
+    "n": 24,
+    "label_correct": 0,
+    "evidence_complete_correct": 0,
+    "model_calls": 144,
+    "invalid_or_failed_steps": 136,
+    "generation_seconds": 605.2622527459926,
+    "completed": 0,
+    "abstentions": 0
+  }
+}

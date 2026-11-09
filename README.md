@@ -10,6 +10,25 @@ The repository intentionally remains runnable without a paid model API. The defa
 
 > Public portfolio implementation only. No employer documents, proprietary requirements, confidential prompts, or private datasets are included.
 
+## Local evidence-agent experiment
+
+A separate, reproducible [evidence-agent extension](docs/evidence-agent.md) adds
+real local-model action selection, read-only search/read tools, citation membership
+validation, persisted SQLite state, crash recovery and structured traces. It compares
+free JSON tool use with a constrained model-guided controller against fixed-retrieval
+and abstention baselines on public SciFact data. Schema safety, workflow completion
+and answer correctness are measured separately; this is not a production or clinical
+reasoning claim. The pinned 0.5B model requires no paid API.
+The [measured report](evidence/AGENT-RESULTS.md) retains negative results: the
+0.5B controller gets 5/24 labels correct. A fixed 1.5B/BF16 capacity experiment
+reaches 11/24, versus fixed retrieval (7/24) and always abstaining (8/24), but only
+5/24 outcomes include complete correct evidence. All 24 workflows complete;
+completion is not factual accuracy. Neither tested model is a trusted answer system.
+
+The [optional MCP adapter](docs/evidence_mcp.md) exposes the same corpus tools and
+has a real stdio protocol integration test. The agent loop currently uses in-process
+tools, not MCP transport.
+
 ## Architecture
 
 ```mermaid

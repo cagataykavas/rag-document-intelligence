@@ -1,0 +1,99 @@
+{
+  "sdk": "mcp",
+  "sdk_version": "1.26.0",
+  "transport": "stdio",
+  "corpus_sha256_before": "bb648a67142d962eba1a662ef347c6cfe657f8615e2f7ec578997daa94542903",
+  "invalid_calls": [
+    {
+      "tool": "search_corpus",
+      "arguments": {},
+      "is_error": true,
+      "response": "Input validation error: 'query' is a required property"
+    },
+    {
+      "tool": "search_corpus",
+      "arguments": {
+        "query": ""
+      },
+      "is_error": true,
+      "response": "Input validation error: '' should be non-empty"
+    },
+    {
+      "tool": "search_corpus",
+      "arguments": {
+        "query": "   "
+      },
+      "is_error": true,
+      "response": "query must not be whitespace"
+    },
+    {
+      "tool": "search_corpus",
+      "arguments": {
+        "query": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      "is_error": true,
+      "response": "Input validation error: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' is too long"
+    },
+    {
+      "tool": "search_corpus",
+      "arguments": {
+        "query": 123
+      },
+      "is_error": true,
+      "response": "Input validation error: 123 is not of type 'string'"
+    },
+    {
+      "tool": "search_corpus",
+      "arguments": {
+        "query": "sleep",
+        "path": "/etc/passwd"
+      },
+      "is_error": true,
+      "response": "Input validation error: Additional properties are not allowed ('path' was unexpected)"
+    },
+    {
+      "tool": "get_evidence",
+      "arguments": {
+        "doc_id": "../corpus.jsonl"
+      },
+      "is_error": true,
+      "response": "unknown document ID"
+    },
+    {
+      "tool": "get_evidence",
+      "arguments": {
+        "doc_id": 1
+      },
+      "is_error": true,
+      "response": "Input validation error: 1 is not of type 'string'"
+    },
+    {
+      "tool": "get_evidence",
+      "arguments": {
+        "doc_id": "alpha",
+        "sentence": 0
+      },
+      "is_error": true,
+      "response": "Input validation error: Additional properties are not allowed ('sentence' was unexpected)"
+    },
+    {
+      "tool": "execute",
+      "arguments": {
+        "command": "touch forbidden"
+      },
+      "is_error": true,
+      "response": "unknown tool"
+    }
+  ],
+  "protocol_version": "2025-11-25",
+  "output_limit": {
+    "is_error": true,
+    "response": "tool output exceeds 65536-byte limit"
+  },
+  "handshake": "passed",
+  "list_tools": "passed",
+  "search_and_read": "passed",
+  "recovery_after_errors": "passed",
+  "corpus_unchanged": true,
+  "corpus_sha256_after": "bb648a67142d962eba1a662ef347c6cfe657f8615e2f7ec578997daa94542903"
+}

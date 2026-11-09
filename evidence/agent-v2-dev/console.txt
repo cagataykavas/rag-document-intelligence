@@ -1,0 +1,81 @@
+Loading weights:   0%|          | 0/290 [00:00<?, ?it/s]Loading weights: 100%|██████████| 290/290 [00:00<00:00, 17180.30it/s]
+dev fixed_top3 1180 SUPPORT True
+dev agent 1180 CONTRADICT False
+dev fixed_top3 343 CONTRADICT False
+dev agent 343 NOT_ENOUGH_INFO False
+dev fixed_top3 475 CONTRADICT False
+dev agent 475 CONTRADICT False
+dev fixed_top3 386 SUPPORT True
+dev agent 386 SUPPORT True
+dev fixed_top3 1266 CONTRADICT False
+dev agent 1266 CONTRADICT False
+dev fixed_top3 1062 SUPPORT True
+dev agent 1062 SUPPORT True
+dev fixed_top3 641 CONTRADICT False
+dev agent 641 CONTRADICT False
+dev fixed_top3 904 CONTRADICT False
+dev agent 904 CONTRADICT False
+dev fixed_top3 1359 SUPPORT False
+dev agent 1359 SUPPORT False
+dev fixed_top3 847 SUPPORT False
+dev agent 847 SUPPORT False
+dev fixed_top3 532 SUPPORT False
+dev agent 532 SUPPORT False
+dev fixed_top3 1029 CONTRADICT True
+dev agent 1029 SUPPORT False
+dev fixed_top3 1370 CONTRADICT True
+dev agent 1370 CONTRADICT True
+dev fixed_top3 1110 CONTRADICT True
+dev agent 1110 CONTRADICT True
+dev fixed_top3 1137 CONTRADICT True
+dev agent 1137 SUPPORT False
+dev fixed_top3 1303 SUPPORT False
+dev agent 1303 SUPPORT False
+dev fixed_top3 1213 SUPPORT False
+dev agent 1213 SUPPORT False
+dev fixed_top3 1197 CONTRADICT False
+dev agent 1197 CONTRADICT False
+dev fixed_top3 560 CONTRADICT False
+dev agent 560 SUPPORT False
+dev fixed_top3 72 CONTRADICT False
+dev agent 72 CONTRADICT False
+dev fixed_top3 1395 SUPPORT False
+dev agent 1395 CONTRADICT False
+dev fixed_top3 36 SUPPORT False
+dev agent 36 NOT_ENOUGH_INFO True
+dev fixed_top3 1179 SUPPORT False
+dev agent 1179 SUPPORT False
+dev fixed_top3 659 CONTRADICT False
+dev agent 659 SUPPORT False
+{
+  "fixed_top3": {
+    "label_correct": 7,
+    "evidence_complete_correct": 2,
+    "invalid_or_failed_steps": 0,
+    "generation_seconds": 75.12685888599754,
+    "model_forward_passes": 24,
+    "gold_citation_hits": 2,
+    "citation_count": 24,
+    "n": 24,
+    "gold_sentence_citation_precision": 0.08333333333333333,
+    "completed": 24,
+    "abstentions": 0
+  },
+  "agent": {
+    "label_correct": 5,
+    "evidence_complete_correct": 2,
+    "invalid_or_failed_steps": 0,
+    "generation_seconds": 43.25547387000006,
+    "model_forward_passes": 51,
+    "gold_citation_hits": 3,
+    "citation_count": 22,
+    "n": 24,
+    "gold_sentence_citation_precision": 0.13636363636363635,
+    "completed": 24,
+    "abstentions": 2
+  },
+  "always_abstain": {
+    "n": 24,
+    "label_correct": 8
+  }
+}

@@ -1,0 +1,20 @@
+Loading weights:   0%|          | 0/290 [00:00<?, ?it/s]Loading weights: 100%|██████████| 290/290 [00:00<00:00, 4856.01it/s]
+Loading weights:   0%|          | 0/290 [00:00<?, ?it/s]Loading weights: 100%|██████████| 290/290 [00:00<00:00, 5687.40it/s]
+{
+  "claim_id": 997,
+  "split": "train",
+  "policy": "Qwen/Qwen2.5-0.5B-Instruct@7ae557604adf67be50417f59c2c2f167def9a775;greedy;tokens=160;cpu;threads=4;constrained-options-v1;finish_only=False;lexical-top3-sentences;require-read;order_seed=2026",
+  "interruption": "Separate process exited75 after real-model-selected read was committed, before tool execution.",
+  "checks": {
+    "pending_action_was_read": true,
+    "same_persisted_raw_decision": true,
+    "same_persisted_generation_time": true,
+    "pending_read_executed": true,
+    "completed_after_restart": true,
+    "no_pending_decision_regeneration": true
+  },
+  "passed": true,
+  "before_policy_calls": 2,
+  "after_policy_calls": 3,
+  "answer_quality_claim": "None. This checks lifecycle recovery, not answer correctness."
+}

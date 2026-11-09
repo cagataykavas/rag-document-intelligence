@@ -1,0 +1,38 @@
+{
+  "schema": "agent-dev-protocol/v1",
+  "claim_ids": [
+    1180,
+    343,
+    475,
+    386,
+    1266,
+    1062,
+    641,
+    904,
+    1359,
+    847,
+    532,
+    1029,
+    1370,
+    1110,
+    1137,
+    1303,
+    1213,
+    1197,
+    560,
+    72,
+    1395,
+    36,
+    1179,
+    659
+  ],
+  "selection": "8 per gold class, ordered by SHA256(JSON([agent-dev-v1, claim_id])); mixed-label claims excluded",
+  "prior_exposure": "SciFact dev was used by earlier retrieval evaluation. This is NOT an untouched test set. Selection frozen before agent generation, no prompt tuning on selected answers.",
+  "agent": "6 model actions max; search top3 word TF-IDF; read; finish",
+  "baseline": "Fixed claim search top3 plus all three abstracts, then one same-model finish attempt. Stronger evidence availability, fewer model calls. Not equal compute.",
+  "metrics": "All 24 denominators include malformed, exhausted and failed runs as incorrect. Separate label accuracy, evidence-complete accuracy, abstention, invalid actions, tool errors, calls and latency. NEI evidence-complete means correct abstention, not proof that corpus lacks evidence.",
+  "data_sha256": {
+    "corpus.jsonl": "b8d6c89624cb2ed74dee8938effc4f5d8bd2086887880af8110d64be4ceade62",
+    "claims_dev.jsonl": "86f0435d08fdb65d1aa41d1472684f57e6e71930626497bdf4d7a9ec1a632217"
+  }
+}

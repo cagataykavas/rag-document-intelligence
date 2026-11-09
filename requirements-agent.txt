@@ -1,0 +1,5 @@
+# Optional local CPU model support; base project does not need these packages.
+# Install a CPU torch wheel from https://download.pytorch.org/whl/cpu first.
+torch>=2.6,<3
+transformers>=4.45,<6
+huggingface-hub>=0.26,<3

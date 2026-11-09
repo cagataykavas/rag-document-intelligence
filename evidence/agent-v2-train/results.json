@@ -1,0 +1,381 @@
+{
+  "protocol": {
+    "schema": "constrained-agent-dev/v1",
+    "split": "train",
+    "claim_ids": [
+      997,
+      339,
+      112,
+      413,
+      946,
+      80
+    ],
+    "prior_exposure": "Development comparison. V1 results already observed. Not an untouched test or generalization estimate.",
+    "selection": "Same 24 frozen dev cases; train smoke uses first two per class from deterministic selection.",
+    "candidate_policy": "Forced initial search top3; model selects unread doc or verdict with one of lexical top3 sentences per read document; abstain always available. Last step finish-only. At most 26 one-token letter options.",
+    "scoring": "Greedy argmax raw next-token logit among A..Z single-token IDs. Conditional softmax over legal options logged; not calibrated confidence. Stable option order, positional bias not controlled.",
+    "baseline": "Same model chooses finish-only using all top3 abstracts and same sentence candidates; always-NEI non-LLM baseline.",
+    "data_sha256": {
+      "corpus.jsonl": "b8d6c89624cb2ed74dee8938effc4f5d8bd2086887880af8110d64be4ceade62",
+      "claims_dev.jsonl": "86f0435d08fdb65d1aa41d1472684f57e6e71930626497bdf4d7a9ec1a632217"
+    },
+    "code_sha256": {
+      "src/evidence_agent.py": "2ef803082cf904ab60e497a629e962d84a3cc544e41186f2dae90dbddcb426c4",
+      "src/evidence_agent_constrained.py": "25bd07f448aeaf4697f251c9bf4c35a0896bd0a8e3b628eeff91588fa5d101f5",
+      "src/evidence_agent_constrained_eval.py": "88d91db0ffbe7669f929e1990313eae4699eee3a5e3be25061d56b813f177580"
+    }
+  },
+  "policy": "Qwen/Qwen2.5-0.5B-Instruct@7ae557604adf67be50417f59c2c2f167def9a775;greedy;tokens=160;cpu;threads=4;constrained-options-v1;finish_only=False;lexical-top3-sentences",
+  "cases": [
+    {
+      "fixed_top3": {
+        "claim_id": 997,
+        "gold": "SUPPORT",
+        "predicted": "SUPPORT",
+        "label_correct": true,
+        "evidence_complete_correct": false,
+        "status": "completed",
+        "model_calls": 1,
+        "invalid_or_failed_steps": 0,
+        "generation_seconds": 2.767309263000243,
+        "citations": [
+          [
+            "30122260",
+            0
+          ]
+        ],
+        "read_documents": [
+          "21793890",
+          "27635177",
+          "30122260"
+        ],
+        "gold_citation_hits": 0,
+        "citation_count": 1,
+        "wall_seconds_this_invocation": 2.77229650100071,
+        "model_forward_passes": 1
+      },
+      "agent": {
+        "claim_id": 997,
+        "gold": "SUPPORT",
+        "predicted": "NOT_ENOUGH_INFO",
+        "label_correct": false,
+        "evidence_complete_correct": false,
+        "status": "completed",
+        "model_calls": 2,
+        "invalid_or_failed_steps": 0,
+        "generation_seconds": 0.5325316999997085,
+        "citations": [],
+        "read_documents": [],
+        "gold_citation_hits": 0,
+        "citation_count": 0,
+        "wall_seconds_this_invocation": 0.5577691709995634,
+        "model_forward_passes": 1
+      },
+      "always_abstain": {
+        "label_correct": false,
+        "evidence_complete_correct": false
+      }
+    },
+    {
+      "fixed_top3": {
+        "claim_id": 339,
+        "gold": "SUPPORT",
+        "predicted": "SUPPORT",
+        "label_correct": true,
+        "evidence_complete_correct": false,
+        "status": "completed",
+        "model_calls": 1,
+        "invalid_or_failed_steps": 0,
+        "generation_seconds": 4.8193553890005205,
+        "citations": [
+          [
+            "23349986",
+            1
+          ]
+        ],
+        "read_documents": [
+          "14973286",
+          "23349986",
+          "24211561"
+        ],
+        "gold_citation_hits": 0,
+        "citation_count": 1,
+        "wall_seconds_this_invocation": 4.825085577999744,
+        "model_forward_passes": 1
+      },
+      "agent": {
+        "claim_id": 339,
+        "gold": "SUPPORT",
+        "predicted": "NOT_ENOUGH_INFO",
+        "label_correct": false,
+        "evidence_complete_correct": false,
+        "status": "completed",
+        "model_calls": 2,
+        "invalid_or_failed_steps": 0,
+        "generation_seconds": 0.615042385000379,
+        "citations": [],
+        "read_documents": [],
+        "gold_citation_hits": 0,
+        "citation_count": 0,
+        "wall_seconds_this_invocation": 0.6445826429999215,
+        "model_forward_passes": 1
+      },
+      "always_abstain": {
+        "label_correct": false,
+        "evidence_complete_correct": false
+      }
+    },
+    {
+      "fixed_top3": {
+        "claim_id": 112,
+        "gold": "CONTRADICT",
+        "predicted": "SUPPORT",
+        "label_correct": false,
+        "evidence_complete_correct": false,
+        "status": "completed",
+        "model_calls": 1,
+        "invalid_or_failed_steps": 0,
+        "generation_seconds": 5.250177251000423,
+        "citations": [
+          [
+            "1759213",
+            8
+          ]
+        ],
+        "read_documents": [
+          "14584755",
+          "1759213",
+          "26199970"
+        ],
+        "gold_citation_hits": 0,
+        "citation_count": 1,
+        "wall_seconds_this_invocation": 5.255508961000487,
+        "model_forward_passes": 1
+      },
+      "agent": {
+        "claim_id": 112,
+        "gold": "CONTRADICT",
+        "predicted": "NOT_ENOUGH_INFO",
+        "label_correct": false,
+        "evidence_complete_correct": false,
+        "status": "completed",
+        "model_calls": 2,
+        "invalid_or_failed_steps": 0,
+        "generation_seconds": 0.7015849760000492,
+        "citations": [],
+        "read_documents": [],
+        "gold_citation_hits": 0,
+        "citation_count": 0,
+        "wall_seconds_this_invocation": 0.743486639999901,
+        "model_forward_passes": 1
+      },
+      "always_abstain": {
+        "label_correct": false,
+        "evidence_complete_correct": false
+      }
+    },
+    {
+      "fixed_top3": {
+        "claim_id": 413,
+        "gold": "CONTRADICT",
+        "predicted": "SUPPORT",
+        "label_correct": false,
+        "evidence_complete_correct": false,
+        "status": "completed",
+        "model_calls": 1,
+        "invalid_or_failed_steps": 0,
+        "generation_seconds": 4.227136497000174,
+        "citations": [
+          [
+            "4709641",
+            5
+          ]
+        ],
+        "read_documents": [
+          "13282296",
+          "4709641",
+          "6309659"
+        ],
+        "gold_citation_hits": 0,
+        "citation_count": 1,
+        "wall_seconds_this_invocation": 4.232111523999265,
+        "model_forward_passes": 1
+      },
+      "agent": {
+        "claim_id": 413,
+        "gold": "CONTRADICT",
+        "predicted": "NOT_ENOUGH_INFO",
+        "label_correct": false,
+        "evidence_complete_correct": false,
+        "status": "completed",
+        "model_calls": 2,
+        "invalid_or_failed_steps": 0,
+        "generation_seconds": 0.5108575479998763,
+        "citations": [],
+        "read_documents": [],
+        "gold_citation_hits": 0,
+        "citation_count": 0,
+        "wall_seconds_this_invocation": 0.5407064230003016,
+        "model_forward_passes": 1
+      },
+      "always_abstain": {
+        "label_correct": false,
+        "evidence_complete_correct": false
+      }
+    },
+    {
+      "fixed_top3": {
+        "claim_id": 946,
+        "gold": "NOT_ENOUGH_INFO",
+        "predicted": "SUPPORT",
+        "label_correct": false,
+        "evidence_complete_correct": false,
+        "status": "completed",
+        "model_calls": 1,
+        "invalid_or_failed_steps": 0,
+        "generation_seconds": 3.5527655310006594,
+        "citations": [
+          [
+            "18537148",
+            8
+          ]
+        ],
+        "read_documents": [
+          "13083189",
+          "18537148",
+          "26107000"
+        ],
+        "gold_citation_hits": 0,
+        "citation_count": 1,
+        "wall_seconds_this_invocation": 3.560094917999777,
+        "model_forward_passes": 1
+      },
+      "agent": {
+        "claim_id": 946,
+        "gold": "NOT_ENOUGH_INFO",
+        "predicted": "SUPPORT",
+        "label_correct": false,
+        "evidence_complete_correct": false,
+        "status": "completed",
+        "model_calls": 5,
+        "invalid_or_failed_steps": 0,
+        "generation_seconds": 7.521750448999228,
+        "citations": [
+          [
+            "18537148",
+            8
+          ]
+        ],
+        "read_documents": [
+          "13083189",
+          "18537148",
+          "26107000"
+        ],
+        "gold_citation_hits": 0,
+        "citation_count": 1,
+        "wall_seconds_this_invocation": 7.568625803999566,
+        "model_forward_passes": 4
+      },
+      "always_abstain": {
+        "label_correct": true,
+        "evidence_complete_correct": true
+      }
+    },
+    {
+      "fixed_top3": {
+        "claim_id": 80,
+        "gold": "NOT_ENOUGH_INFO",
+        "predicted": "SUPPORT",
+        "label_correct": false,
+        "evidence_complete_correct": false,
+        "status": "completed",
+        "model_calls": 1,
+        "invalid_or_failed_steps": 0,
+        "generation_seconds": 3.4179220949999944,
+        "citations": [
+          [
+            "17462437",
+            1
+          ]
+        ],
+        "read_documents": [
+          "17462437",
+          "36310858",
+          "4320424"
+        ],
+        "gold_citation_hits": 0,
+        "citation_count": 1,
+        "wall_seconds_this_invocation": 3.4227902009997706,
+        "model_forward_passes": 1
+      },
+      "agent": {
+        "claim_id": 80,
+        "gold": "NOT_ENOUGH_INFO",
+        "predicted": "SUPPORT",
+        "label_correct": false,
+        "evidence_complete_correct": false,
+        "status": "completed",
+        "model_calls": 5,
+        "invalid_or_failed_steps": 0,
+        "generation_seconds": 7.483957033000479,
+        "citations": [
+          [
+            "17462437",
+            1
+          ]
+        ],
+        "read_documents": [
+          "17462437",
+          "36310858",
+          "4320424"
+        ],
+        "gold_citation_hits": 0,
+        "citation_count": 1,
+        "wall_seconds_this_invocation": 7.522086904999924,
+        "model_forward_passes": 4
+      },
+      "always_abstain": {
+        "label_correct": true,
+        "evidence_complete_correct": true
+      }
+    }
+  ],
+  "summary": {
+    "fixed_top3": {
+      "label_correct": 2,
+      "evidence_complete_correct": 0,
+      "invalid_or_failed_steps": 0,
+      "generation_seconds": 24.034666026002014,
+      "model_forward_passes": 6,
+      "gold_citation_hits": 0,
+      "citation_count": 6,
+      "n": 6,
+      "gold_sentence_citation_precision": 0.0,
+      "completed": 6,
+      "abstentions": 0
+    },
+    "agent": {
+      "label_correct": 0,
+      "evidence_complete_correct": 0,
+      "invalid_or_failed_steps": 0,
+      "generation_seconds": 17.36572409099972,
+      "model_forward_passes": 12,
+      "gold_citation_hits": 0,
+      "citation_count": 2,
+      "n": 6,
+      "gold_sentence_citation_precision": 0.0,
+      "completed": 6,
+      "abstentions": 4
+    },
+    "always_abstain": {
+      "n": 6,
+      "label_correct": 2
+    }
+  },
+  "paired_label_outcomes": {
+    "both_correct": 0,
+    "agent_only": 0,
+    "baseline_only": 2,
+    "both_wrong": 4
+  }
+}

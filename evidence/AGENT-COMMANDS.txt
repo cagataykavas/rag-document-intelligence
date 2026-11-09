@@ -1,0 +1,39 @@
+# Commands executed from the isolated rag-agent worktree.
+# Local sibling venvs were pre-existing; measured versions: agent-environment.json.
+# Fresh-machine installation instructions are in docs/evidence-agent.md.
+
+../.venv-evidence/bin/python -m src.evidence_agent_eval --data /tmp/scifact/data --manifest evidence/agent-protocol.json --freeze
+# Protocol committed at e0f1aa9 before V1 inference.
+HF_HOME=../hf-cache ../.venv-evidence/bin/python -m src.evidence_agent_eval --data /tmp/scifact/data --manifest evidence/agent-protocol.json --output evidence/agent-run
+
+# Original constrained train smoke at 2e5ce4b; repaired train variants at 8a63404.
+HF_HOME=../hf-cache ../.venv-evidence/bin/python -m src.evidence_agent_constrained_eval --data /tmp/scifact/data --manifest evidence/agent-protocol.json --split train --output evidence/agent-v2-train
+HF_HOME=../hf-cache ../.venv-evidence/bin/python -m src.evidence_agent_constrained_eval --data /tmp/scifact/data --manifest evidence/agent-protocol.json --split train --output evidence/agent-v2-train-repaired
+HF_HOME=../hf-cache ../.venv-evidence/bin/python -m src.evidence_agent_constrained_eval --data /tmp/scifact/data --manifest evidence/agent-protocol.json --split train --order-seed 2027 --output evidence/agent-v2-train-order2027
+
+# V2 dev code at 21eaa8e: final-token logits, actual policy-mode identity.
+HF_HOME=../hf-cache ../.venv-evidence/bin/python -m src.evidence_agent_constrained_eval --data /tmp/scifact/data --manifest evidence/agent-protocol.json --output evidence/agent-v2-dev
+../.venv-evidence/bin/python -m src.evidence_agent_report --data /tmp/scifact/data --run evidence/agent-v2-dev
+../.venv-evidence/bin/python -m src.evidence_agent_report --data /tmp/scifact/data --run evidence/agent-run
+
+# Separate processes, deliberate first-stage exit75, then recovery.
+HF_HOME=../hf-cache ../.venv-evidence/bin/python -m src.evidence_agent_recovery_smoke --data /tmp/scifact/data --output evidence/agent-recovery --stage interrupt
+HF_HOME=../hf-cache ../.venv-evidence/bin/python -m src.evidence_agent_recovery_smoke --data /tmp/scifact/data --output evidence/agent-recovery --stage resume
+
+# Official pinned1.5B model metadata was verified with HF public API; downloaded
+# using snapshot_download(..., revision=989aa798..., token=False), no remote code.
+# Full model provenance/hashes: agent-capacity-model.json. Code at 583869a.
+HF_HOME=../hf-cache ../.venv-evidence/bin/python -m src.evidence_agent_capacity --data /tmp/scifact/data --output evidence/agent-capacity-smoke
+HF_HOME=../hf-cache ../.venv-evidence/bin/python -m src.evidence_agent_constrained_eval --data /tmp/scifact/data --manifest evidence/agent-protocol.json --output evidence/agent-v3-capacity --capacity
+
+../.venv-mcp/bin/python -m pytest -q
+../rag/.venv/bin/python -m pytest -q
+../rag/.venv/bin/ruff check src app tests
+../rag/.venv/bin/python -m compileall -q src app tests
+git diff --check
+
+# The workflow files were modified locally; no remote CI run or publication was
+# claimed. Docker checks were not run in this environment.
+
+# Post-hoc retrieval-only integration diagnostic; no model calls.
+../.venv-evidence/bin/python -m src.evidence_agent_retrieval_diagnostic --data /tmp/scifact/data --manifest evidence/agent-protocol.json --output evidence/agent-retrieval-integration.json

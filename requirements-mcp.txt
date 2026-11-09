@@ -1,0 +1,2 @@
+# Optional official MCP SDK for the local stdio adapter and integration tests.
+mcp==1.26.0

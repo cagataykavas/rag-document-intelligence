@@ -1,0 +1,27 @@
+{
+  "schema": "constrained-agent-dev/v1",
+  "split": "train",
+  "order_seed": 2027,
+  "claim_ids": [
+    997,
+    339,
+    112,
+    413,
+    946,
+    80
+  ],
+  "prior_exposure": "Development comparison. V1 results already observed. Not an untouched test or generalization estimate.",
+  "selection": "Same 24 frozen dev cases; train smoke uses first two per class from deterministic selection.",
+  "candidate_policy": "Forced initial search top3; model selects unread doc or verdict with one of lexical top3 sentences per read document; Abstention only after reading at least one source. Last step finish-only. At most 26 one-token letter options.",
+  "scoring": "Greedy argmax raw next-token logit among A..Z single-token IDs. Conditional softmax over legal options logged; not calibrated confidence. Option order deterministically permuted by SHA256(JSON([order_seed, claim, action])); positional sensitivity not measured on dev.",
+  "baseline": "Same model chooses finish-only using all top3 abstracts and same sentence candidates; always-NEI non-LLM baseline.",
+  "data_sha256": {
+    "corpus.jsonl": "b8d6c89624cb2ed74dee8938effc4f5d8bd2086887880af8110d64be4ceade62",
+    "claims_dev.jsonl": "86f0435d08fdb65d1aa41d1472684f57e6e71930626497bdf4d7a9ec1a632217"
+  },
+  "code_sha256": {
+    "src/evidence_agent.py": "2ef803082cf904ab60e497a629e962d84a3cc544e41186f2dae90dbddcb426c4",
+    "src/evidence_agent_constrained.py": "f4ea11c5cf5ee3144d06a254cab613c9753880cb57947b53292a319df0a23caa",
+    "src/evidence_agent_constrained_eval.py": "27b0254e494abb35c292d22639d2359303c9a69c275690bc2d57b351af31f2d3"
+  }
+}

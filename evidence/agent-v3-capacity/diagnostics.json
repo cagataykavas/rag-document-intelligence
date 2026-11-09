@@ -1,0 +1,293 @@
+{
+  "source_results_sha256": "247ec126d2c79285d73ed0c2644dff3009b78bd39e06b314f8ebb2aed75eacfb",
+  "method": "Post-hoc failure decomposition on all frozen cases; no filtering or policy changes. Candidate oracle is diagnostic only, never an agent input.",
+  "summary": {
+    "evidence_bearing_cases": 16,
+    "fixed_top3_any_gold_doc": 9,
+    "agent_read_any_gold_doc": 8,
+    "candidate_oracle_complete_evidence": 7,
+    "multi_sentence_only_gold_cases": 0,
+    "agent_error_categories": {
+      "schema_or_model": 0,
+      "tool_or_citation": 0
+    },
+    "by_class": {
+      "fixed_top3": {
+        "SUPPORT": {
+          "n": 8,
+          "label_correct": 1,
+          "complete_evidence_correct": 1
+        },
+        "CONTRADICT": {
+          "n": 8,
+          "label_correct": 6,
+          "complete_evidence_correct": 2
+        },
+        "NOT_ENOUGH_INFO": {
+          "n": 8,
+          "label_correct": 0,
+          "complete_evidence_correct": 0
+        }
+      },
+      "agent": {
+        "SUPPORT": {
+          "n": 8,
+          "label_correct": 5,
+          "complete_evidence_correct": 3
+        },
+        "CONTRADICT": {
+          "n": 8,
+          "label_correct": 4,
+          "complete_evidence_correct": 0
+        },
+        "NOT_ENOUGH_INFO": {
+          "n": 8,
+          "label_correct": 2,
+          "complete_evidence_correct": 2
+        }
+      }
+    }
+  },
+  "cases": [
+    {
+      "claim_id": 1180,
+      "has_gold_evidence": true,
+      "fixed_top3_any_gold_doc": false,
+      "agent_read_any_gold_doc": false,
+      "gold_document_count": 1,
+      "fixed_top3_gold_document_count": 0,
+      "single_sentence_candidate_can_cover_gold_set": false,
+      "smallest_gold_evidence_set": 1
+    },
+    {
+      "claim_id": 343,
+      "has_gold_evidence": true,
+      "fixed_top3_any_gold_doc": false,
+      "agent_read_any_gold_doc": false,
+      "gold_document_count": 1,
+      "fixed_top3_gold_document_count": 0,
+      "single_sentence_candidate_can_cover_gold_set": false,
+      "smallest_gold_evidence_set": 1
+    },
+    {
+      "claim_id": 475,
+      "has_gold_evidence": true,
+      "fixed_top3_any_gold_doc": false,
+      "agent_read_any_gold_doc": false,
+      "gold_document_count": 1,
+      "fixed_top3_gold_document_count": 0,
+      "single_sentence_candidate_can_cover_gold_set": false,
+      "smallest_gold_evidence_set": 1
+    },
+    {
+      "claim_id": 386,
+      "has_gold_evidence": true,
+      "fixed_top3_any_gold_doc": true,
+      "agent_read_any_gold_doc": true,
+      "gold_document_count": 1,
+      "fixed_top3_gold_document_count": 1,
+      "single_sentence_candidate_can_cover_gold_set": true,
+      "smallest_gold_evidence_set": 1
+    },
+    {
+      "claim_id": 1266,
+      "has_gold_evidence": true,
+      "fixed_top3_any_gold_doc": true,
+      "agent_read_any_gold_doc": true,
+      "gold_document_count": 1,
+      "fixed_top3_gold_document_count": 1,
+      "single_sentence_candidate_can_cover_gold_set": true,
+      "smallest_gold_evidence_set": 1
+    },
+    {
+      "claim_id": 1062,
+      "has_gold_evidence": true,
+      "fixed_top3_any_gold_doc": true,
+      "agent_read_any_gold_doc": true,
+      "gold_document_count": 1,
+      "fixed_top3_gold_document_count": 1,
+      "single_sentence_candidate_can_cover_gold_set": true,
+      "smallest_gold_evidence_set": 1
+    },
+    {
+      "claim_id": 641,
+      "has_gold_evidence": true,
+      "fixed_top3_any_gold_doc": true,
+      "agent_read_any_gold_doc": true,
+      "gold_document_count": 1,
+      "fixed_top3_gold_document_count": 1,
+      "single_sentence_candidate_can_cover_gold_set": false,
+      "smallest_gold_evidence_set": 1
+    },
+    {
+      "claim_id": 904,
+      "has_gold_evidence": true,
+      "fixed_top3_any_gold_doc": true,
+      "agent_read_any_gold_doc": true,
+      "gold_document_count": 1,
+      "fixed_top3_gold_document_count": 1,
+      "single_sentence_candidate_can_cover_gold_set": true,
+      "smallest_gold_evidence_set": 1
+    },
+    {
+      "claim_id": 1359,
+      "has_gold_evidence": true,
+      "fixed_top3_any_gold_doc": true,
+      "agent_read_any_gold_doc": false,
+      "gold_document_count": 1,
+      "fixed_top3_gold_document_count": 1,
+      "single_sentence_candidate_can_cover_gold_set": true,
+      "smallest_gold_evidence_set": 1
+    },
+    {
+      "claim_id": 847,
+      "has_gold_evidence": true,
+      "fixed_top3_any_gold_doc": false,
+      "agent_read_any_gold_doc": false,
+      "gold_document_count": 1,
+      "fixed_top3_gold_document_count": 0,
+      "single_sentence_candidate_can_cover_gold_set": false,
+      "smallest_gold_evidence_set": 1
+    },
+    {
+      "claim_id": 532,
+      "has_gold_evidence": true,
+      "fixed_top3_any_gold_doc": true,
+      "agent_read_any_gold_doc": true,
+      "gold_document_count": 1,
+      "fixed_top3_gold_document_count": 1,
+      "single_sentence_candidate_can_cover_gold_set": false,
+      "smallest_gold_evidence_set": 1
+    },
+    {
+      "claim_id": 1029,
+      "has_gold_evidence": true,
+      "fixed_top3_any_gold_doc": true,
+      "agent_read_any_gold_doc": true,
+      "gold_document_count": 3,
+      "fixed_top3_gold_document_count": 1,
+      "single_sentence_candidate_can_cover_gold_set": true,
+      "smallest_gold_evidence_set": 1
+    },
+    {
+      "claim_id": 1370,
+      "has_gold_evidence": true,
+      "fixed_top3_any_gold_doc": false,
+      "agent_read_any_gold_doc": false,
+      "gold_document_count": 1,
+      "fixed_top3_gold_document_count": 0,
+      "single_sentence_candidate_can_cover_gold_set": false,
+      "smallest_gold_evidence_set": 1
+    },
+    {
+      "claim_id": 1110,
+      "has_gold_evidence": true,
+      "fixed_top3_any_gold_doc": false,
+      "agent_read_any_gold_doc": false,
+      "gold_document_count": 1,
+      "fixed_top3_gold_document_count": 0,
+      "single_sentence_candidate_can_cover_gold_set": false,
+      "smallest_gold_evidence_set": 1
+    },
+    {
+      "claim_id": 1137,
+      "has_gold_evidence": true,
+      "fixed_top3_any_gold_doc": false,
+      "agent_read_any_gold_doc": false,
+      "gold_document_count": 1,
+      "fixed_top3_gold_document_count": 0,
+      "single_sentence_candidate_can_cover_gold_set": false,
+      "smallest_gold_evidence_set": 1
+    },
+    {
+      "claim_id": 1303,
+      "has_gold_evidence": true,
+      "fixed_top3_any_gold_doc": true,
+      "agent_read_any_gold_doc": true,
+      "gold_document_count": 1,
+      "fixed_top3_gold_document_count": 1,
+      "single_sentence_candidate_can_cover_gold_set": true,
+      "smallest_gold_evidence_set": 1
+    },
+    {
+      "claim_id": 1213,
+      "has_gold_evidence": false,
+      "fixed_top3_any_gold_doc": false,
+      "agent_read_any_gold_doc": false,
+      "gold_document_count": 0,
+      "fixed_top3_gold_document_count": 0,
+      "single_sentence_candidate_can_cover_gold_set": false,
+      "smallest_gold_evidence_set": null
+    },
+    {
+      "claim_id": 1197,
+      "has_gold_evidence": false,
+      "fixed_top3_any_gold_doc": false,
+      "agent_read_any_gold_doc": false,
+      "gold_document_count": 0,
+      "fixed_top3_gold_document_count": 0,
+      "single_sentence_candidate_can_cover_gold_set": false,
+      "smallest_gold_evidence_set": null
+    },
+    {
+      "claim_id": 560,
+      "has_gold_evidence": false,
+      "fixed_top3_any_gold_doc": false,
+      "agent_read_any_gold_doc": false,
+      "gold_document_count": 0,
+      "fixed_top3_gold_document_count": 0,
+      "single_sentence_candidate_can_cover_gold_set": false,
+      "smallest_gold_evidence_set": null
+    },
+    {
+      "claim_id": 72,
+      "has_gold_evidence": false,
+      "fixed_top3_any_gold_doc": false,
+      "agent_read_any_gold_doc": false,
+      "gold_document_count": 0,
+      "fixed_top3_gold_document_count": 0,
+      "single_sentence_candidate_can_cover_gold_set": false,
+      "smallest_gold_evidence_set": null
+    },
+    {
+      "claim_id": 1395,
+      "has_gold_evidence": false,
+      "fixed_top3_any_gold_doc": false,
+      "agent_read_any_gold_doc": false,
+      "gold_document_count": 0,
+      "fixed_top3_gold_document_count": 0,
+      "single_sentence_candidate_can_cover_gold_set": false,
+      "smallest_gold_evidence_set": null
+    },
+    {
+      "claim_id": 36,
+      "has_gold_evidence": false,
+      "fixed_top3_any_gold_doc": false,
+      "agent_read_any_gold_doc": false,
+      "gold_document_count": 0,
+      "fixed_top3_gold_document_count": 0,
+      "single_sentence_candidate_can_cover_gold_set": false,
+      "smallest_gold_evidence_set": null
+    },
+    {
+      "claim_id": 1179,
+      "has_gold_evidence": false,
+      "fixed_top3_any_gold_doc": false,
+      "agent_read_any_gold_doc": false,
+      "gold_document_count": 0,
+      "fixed_top3_gold_document_count": 0,
+      "single_sentence_candidate_can_cover_gold_set": false,
+      "smallest_gold_evidence_set": null
+    },
+    {
+      "claim_id": 659,
+      "has_gold_evidence": false,
+      "fixed_top3_any_gold_doc": false,
+      "agent_read_any_gold_doc": false,
+      "gold_document_count": 0,
+      "fixed_top3_gold_document_count": 0,
+      "single_sentence_candidate_can_cover_gold_set": false,
+      "smallest_gold_evidence_set": null
+    }
+  ]
+}

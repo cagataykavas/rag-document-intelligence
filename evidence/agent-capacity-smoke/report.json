@@ -1,0 +1,23 @@
+{
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "revision": "989aa7980e4cf806f80c7fef2b1adb7bc71aa306",
+  "dtype": "torch.bfloat16",
+  "claim_id": 997,
+  "split": "train",
+  "model_load_and_index_seconds": 6.538206363000427,
+  "total_seconds": 10.443713766000656,
+  "peak_rss_mib_linux": 3676.765625,
+  "status": "completed",
+  "steps": 3,
+  "answer": {
+    "tool": "finish",
+    "verdict": "SUPPORT",
+    "citations": [
+      {
+        "doc_id": "27635177",
+        "sentence": 3
+      }
+    ]
+  },
+  "scope": "One-case memory/lifecycle smoke only, not answer-accuracy evidence."
+}
