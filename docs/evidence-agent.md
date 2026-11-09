@@ -186,3 +186,21 @@ A frozen-case retrieval-only comparison is in the results report: hybrid top3
 improves macro document recall from 52.08% to 60.42% on 16 evidence-bearing cases;
 hybrid top10 reaches 85.42%. These are retrieval metrics, not model-answer accuracy,
 and no frozen model results were rerun or relabeled.
+
+## Public dataset attribution and trace contents
+
+These diagnostic runs use [SciFact](https://github.com/allenai/scifact),
+introduced by Wadden et al. (2020), [Fact or Fiction: Verifying Scientific Claims](https://aclanthology.org/2020.emnlp-main.609/).
+SciFact claims and evidence annotations are licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); its abstracts originate
+from [Semantic Scholar S2ORC](https://github.com/allenai/s2orc) and are licensed
+under [ODC-By 1.0](https://opendatacommons.org/licenses/by/1-0/), as documented in
+the [upstream dataset license](https://github.com/allenai/scifact/blob/master/LICENSE.md).
+
+The checked-in agent prompts, read-tool outputs, and traces contain selected
+public claims and abstract text, not only aggregate metrics. They are derived
+benchmark artifacts: document titles and abstracts are assembled into prompts,
+selected sentences are numbered for citations, and model outputs are recorded
+without treating them as new ground truth. Original document IDs are retained
+for attribution and audit. The source data retains its original licenses; no
+private company documents or user conversations are included in these traces.
