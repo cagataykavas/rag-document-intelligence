@@ -1,0 +1,164 @@
+{
+  "protocol": {
+    "stage": "compare",
+    "claim_ids": [
+      1180,
+      343,
+      475,
+      386,
+      1266,
+      1062,
+      641,
+      904,
+      1359,
+      847,
+      532,
+      1029,
+      1370,
+      1110,
+      1137,
+      1303,
+      1213,
+      1197,
+      560,
+      72,
+      1395,
+      36,
+      1179,
+      659
+    ],
+    "model": "Qwen/Qwen2.5-1.5B-Instruct",
+    "revision": "989aa7980e4cf806f80c7fef2b1adb7bc71aa306",
+    "retrieval": "unchanged word TF-IDF top3",
+    "order_seed": 2026,
+    "comparison": "Transport only. Same policy, prompts, source results, budget, dtype, model. Public dev, already exposed; no new accuracy claim.",
+    "corpus_fingerprint": "6ac80771cce997228537fb773ccaa5a186410e2456214aca224abd8c7714bc80",
+    "data_sha256": {
+      "corpus.jsonl": "b8d6c89624cb2ed74dee8938effc4f5d8bd2086887880af8110d64be4ceade62",
+      "claims_dev.jsonl": "86f0435d08fdb65d1aa41d1472684f57e6e71930626497bdf4d7a9ec1a632217"
+    },
+    "packages": {
+      "torch": "2.15.0+cpu",
+      "transformers": "5.22.2",
+      "mcp": "1.26.0",
+      "opentelemetry-sdk": "1.39.1",
+      "anyio": "4.16.0",
+      "pydantic": "2.14.3",
+      "scikit-learn": "1.9.1"
+    },
+    "python": "3.12.14",
+    "code_sha256": {
+      "src/evidence_mcp_client.py": "fa11638be3bc49db1faa09800b38222b31fd45faaa88109f3fa65c365b1bcbfa",
+      "src/evidence_agent_eval.py": "2eea08c91159d861a1d3081fbe0c3166a25052531d0213b307f0d3dc5f54d38a",
+      "src/evidence_mcp.py": "75d19017ff78b83a463ede165a6bc1d4a88500217dee5410f732f540ff181b8e",
+      "src/evidence_agent_constrained_eval.py": "b440e1ec6677cb137bc5adc228a3a4b901d65be42540b638cea8682a4f12ca19",
+      "src/evidence_agent_capacity.py": "c7839d6142dddc1138d59776342db64b4842d2fd42c2022a8d197240128a34f8",
+      "src/evidence_integrated_eval.py": "394e92cf0cb70fbd3d169e926d54bbe64462c3c96df8ef68c0ae09b71a3ff8e9",
+      "src/evidence_policy.py": "f4c1ed1add1a5e96018916d6ad82fc961fd823740c75572ed697b4420e01b9ac",
+      "src/evidence_agent_recovery_smoke.py": "b77188a14615a5f4205bafa5ab68cf999766198ddf061bcd400ebdc5ec0fafe0",
+      "src/evidence_agent_report.py": "a4e1648d5187f1466b6bb81a862d3b67f588c89188284a42451b0e35edf5387d",
+      "src/evidence_snapshot.py": "7d1bf0b6f408600867e66cde88397d2a8145c1a48d5990d14d5173126b4e7df9",
+      "src/evidence_agent.py": "7c60c60dfeb577ea267d71727c2f3ae727f45e7dcdadf5bfb03cd9f5f614fa3a",
+      "src/evidence_agent_retrieval_diagnostic.py": "08c8f6a9d58e6719dc0831927b9679888403e95c71546357c66f45f1bc4bec6e",
+      "src/evidence_telemetry.py": "4505c9bd0a446f7705ed273b045fc0a7bbc24c46fb8aecc68704dc1c85e752b0",
+      "src/evidence_agent_cli.py": "5c53d06229cf3a3c353e8a5652eff037f75ce675f989de7c8813cd15efb1d35e",
+      "src/evidence_agent_constrained.py": "d7eb7a88b2178e0a0d2d6fc6fd184127195d6aa20b534b39bf5442e9edb48c67"
+    }
+  },
+  "cases": [
+    {
+      "claim_id": 1180,
+      "checks": {
+        "same_answer": false,
+        "same_trajectory_prompts_results": false,
+        "same_policy_audit": false
+      },
+      "measurements": {
+        "direct": {
+          "claim_id": 1180,
+          "gold": "SUPPORT",
+          "predicted": "SUPPORT",
+          "label_correct": true,
+          "evidence_complete_correct": false,
+          "status": "completed",
+          "model_calls": 3,
+          "invalid_or_failed_steps": 0,
+          "generation_seconds": 4.391198684999836,
+          "citations": [
+            [
+              "2566674",
+              5
+            ]
+          ],
+          "read_documents": [
+            "2566674"
+          ],
+          "wall_seconds": 4.452398143999744,
+          "model_forward_passes": 2
+        },
+        "mcp": {
+          "claim_id": 1180,
+          "gold": "SUPPORT",
+          "predicted": null,
+          "label_correct": false,
+          "evidence_complete_correct": false,
+          "status": "exhausted",
+          "model_calls": 6,
+          "invalid_or_failed_steps": 6,
+          "generation_seconds": 0.0010942059989247355,
+          "citations": [],
+          "read_documents": [],
+          "wall_seconds": 23.98752937900008,
+          "model_forward_passes": 0
+        }
+      }
+    },
+    {
+      "claim_id": 343,
+      "checks": {
+        "same_answer": false,
+        "same_trajectory_prompts_results": false,
+        "same_policy_audit": false
+      },
+      "measurements": {
+        "direct": {
+          "claim_id": 343,
+          "gold": "SUPPORT",
+          "predicted": "CONTRADICT",
+          "label_correct": false,
+          "evidence_complete_correct": false,
+          "status": "completed",
+          "model_calls": 3,
+          "invalid_or_failed_steps": 0,
+          "generation_seconds": 5.560768952000217,
+          "citations": [
+            [
+              "19308127",
+              5
+            ]
+          ],
+          "read_documents": [
+            "19308127"
+          ],
+          "wall_seconds": 5.596041538999998,
+          "model_forward_passes": 2
+        },
+        "mcp": {
+          "claim_id": 343,
+          "gold": "SUPPORT",
+          "predicted": null,
+          "label_correct": false,
+          "evidence_complete_correct": false,
+          "status": "exhausted",
+          "model_calls": 6,
+          "invalid_or_failed_steps": 6,
+          "generation_seconds": 0.0011903499989784905,
+          "citations": [],
+          "read_documents": [],
+          "wall_seconds": 24.274855384000148,
+          "model_forward_passes": 0
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+........................................................................ [ 18%]
+........................................................................ [ 37%]
+........................................................................ [ 56%]
+........................................................................ [ 75%]
+........................................................................ [ 94%]
+......................                                                   [100%]
+============================= slowest 10 durations =============================
+4.03s call     tests/test_persistent_mcp.py::test_handshake_timeout_closes_children
+4.03s call     tests/test_persistent_mcp.py::test_bounded_failure_and_owner_cleanup[timeout]
+4.02s call     tests/test_integrated_agent.py::test_transport_fault_is_bounded[timeout]
+3.73s call     tests/test_persistent_mcp.py::test_timeout_once_reconnects_and_then_reuses
+3.62s call     tests/test_persistent_mcp.py::test_snapshot_identity_survives_reuse_and_rejects_changed_reconnect
+3.50s call     tests/test_integrated_agent.py::test_disconnect_retry_recovers
+3.39s call     tests/test_integrated_agent.py::test_real_agent_transport_parity_and_sdk_linkage
+3.27s call     tests/test_persistent_mcp.py::test_concurrent_call_and_close_are_rejected
+2.97s call     tests/test_persistent_mcp.py::test_idle_disconnect_reconnects_on_next_call
+2.58s call     tests/test_integrated_agent.py::test_transport_fault_is_bounded[disconnect]
+382 passed in 60.56s (0:01:00)

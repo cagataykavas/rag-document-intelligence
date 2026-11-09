@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 
 from src.evidence_agent import LocalQwenPolicy
+from src.evidence_telemetry import span
 
 
 def candidate_actions(state, *, finish_only=False):
@@ -85,7 +86,8 @@ class ConstrainedQwenPolicy(LocalQwenPolicy):
             token_ids = [self.tokenizer.encode(letter, add_special_tokens=False) for letter in letters]
             if any(len(ids) != 1 for ids in token_ids):
                 raise RuntimeError('option labels must tokenize to one token')
-            with torch.inference_mode():
+            with span(getattr(self, 'telemetry', None), 'model.forward',
+                      **{'model.input_tokens': inputs['input_ids'].shape[1]}), torch.inference_mode():
                 logits = self.model(**inputs, logits_to_keep=1).logits[0, -1, [ids[0] for ids in token_ids]]
                 chosen = int(logits.argmax().item())
                 probabilities = torch.softmax(logits, dim=0).tolist()

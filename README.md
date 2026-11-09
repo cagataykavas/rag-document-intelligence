@@ -598,3 +598,22 @@ retriever achieved Recall@10 0.900 and nDCG@10 0.772, versus 0.872 and 0.731 for
 word-only TF-IDF. This comparison is not an official BEIR run, a generated-answer
 accuracy measurement, or a production deployment benchmark. Hybrid retrieval was
 substantially slower than word-only in the local run; see the full tradeoff.
+
+### Integrated agent transport and observability
+
+The optional real-model evidence agent now supports official MCP stdio tool
+execution and actual OpenTelemetry SDK span collection. A separately measured
+transport experiment compares unchanged direct/MCP trajectories, injected
+transport faults and two-process recovery. This does not improve or establish
+scientific-answer accuracy. See the [integration guide](docs/integrated-mcp-observability.md)
+and [retained evidence](evidence/integrated/REPORT.md).
+
+The follow-on [persistent-session lifecycle experiment](docs/persistent-mcp-lifecycle.md)
+removes repeated MCP server/index startup with one safely owned session per serial
+batch. Fresh and reused paths are compared against the same direct model policy;
+startup/shutdown costs and unchanged answer limitations are reported separately.
+
+## Materialize public evidence
+
+Before tests or artifact audits, run `python tools/restore_evidence.py`.
+See [lossless evidence packaging](docs/evidence-packaging.md) for verification details.

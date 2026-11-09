@@ -1,0 +1,23 @@
+........................................................................ [ 19%]
+........................................................................ [ 39%]
+........................................................................ [ 59%]
+........................................................................ [ 79%]
+........................................................................ [ 99%]
+.                                                                        [100%]
+============================= slowest 15 durations =============================
+4.03s call     tests/test_integrated_agent.py::test_transport_fault_is_bounded[timeout]
+3.30s call     tests/test_integrated_agent.py::test_real_agent_transport_parity_and_sdk_linkage
+3.23s call     tests/test_integrated_agent.py::test_transport_fault_is_bounded[disconnect]
+3.20s call     tests/test_integrated_agent.py::test_disconnect_retry_recovers
+1.88s call     tests/test_evidence_mcp.py::test_real_stdio_handshake_discovery_calls_and_validation
+1.72s call     tests/test_integrated_agent.py::test_contract_faults_do_not_retry[bad_schema]
+1.65s call     tests/test_integrated_agent.py::test_contract_faults_do_not_retry[remote_error]
+1.48s call     tests/test_integrated_agent.py::test_contract_faults_do_not_retry[wrong_corpus]
+0.54s call     tests/test_entailment_paired_regression.py::test_bootstrap_work_is_bounded_before_sampling
+0.21s call     tests/test_entailment_slice_regression.py::test_identical_slices_pass_with_reproducible_fwer_evidence
+0.17s call     tests/test_entailment_paired_regression.py::test_identical_population_passes_with_reproducible_fwer_evidence
+0.15s call     tests/test_entailment_paired_regression.py::test_unresolved_single_case_drop_does_not_claim_regression
+0.14s call     tests/test_entailment_paired_regression.py::test_confident_paired_regression_fails_closed
+0.14s call     tests/test_entailment_baseline.py::test_incompatible_entailment_or_slice_policy_is_rejected
+0.13s call     tests/test_entailment_baseline.py::test_tampered_baseline_and_candidate_digests_are_rejected
+361 passed in 25.46s

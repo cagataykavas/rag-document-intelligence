@@ -1,0 +1,13 @@
+{
+  "checks": {
+    "pending_read": true,
+    "same_raw": true,
+    "same_generation_time": true,
+    "read_completed": true,
+    "completed": true,
+    "no_repeated_policy_decision": true,
+    "same_trace_id": true
+  },
+  "passed": true,
+  "scope": "Two separate Python processes; controlled exit75 after persisted real-model read decision; MCP execution on resume. Read-only at-least-once replay, not side-effect exactly-once."
+}

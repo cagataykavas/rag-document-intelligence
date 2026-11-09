@@ -1,0 +1,300 @@
+{
+  "comparison": {
+    "checks": {
+      "nonempty": true,
+      "unique_span_ids": true,
+      "parents_present_in_same_trace": true,
+      "positive_or_zero_durations": true,
+      "attribute_allowlist": true,
+      "no_exception_events_or_messages": true,
+      "resource_allowlist": true
+    },
+    "passed": true,
+    "span_counts": {
+      "checkpoint.save": 504,
+      "agent.policy": 216,
+      "agent.tool": 216,
+      "model.forward": 144,
+      "agent.task": 72,
+      "mcp.attempt": 96,
+      "mcp.connect": 1,
+      "mcp.close": 1
+    },
+    "trace_count": 73,
+    "error_spans": 0
+  },
+  "restart": {
+    "checks": {
+      "nonempty": true,
+      "unique_span_ids": true,
+      "parents_present_in_same_trace": true,
+      "positive_or_zero_durations": true,
+      "attribute_allowlist": true,
+      "no_exception_events_or_messages": true,
+      "resource_allowlist": true
+    },
+    "passed": true,
+    "span_counts": {
+      "checkpoint.save": 7,
+      "agent.policy": 3,
+      "mcp.connect": 2,
+      "mcp.attempt": 2,
+      "agent.tool": 3,
+      "model.forward": 2,
+      "agent.task": 2,
+      "mcp.close": 2
+    },
+    "trace_count": 3,
+    "error_spans": 1
+  },
+  "checks": {
+    "all_frozen_cases_retained": true,
+    "measured_sources_match_checkout": true,
+    "all_three_path_parity_checks": true,
+    "all_72_tasks_exported": true,
+    "actual_model_forward_count_matches": true,
+    "one_reused_connection_for_batch": true,
+    "one_reused_batch_close": true,
+    "owner_thread_stopped": true,
+    "each_reused_task_has_two_correctly_parented_attempts": true,
+    "connect_counted_in_first_reused_task": true,
+    "setup_shutdown_in_total": true,
+    "restart_parent_continuity": true,
+    "restart_lifecycle_checks": true,
+    "one_new_connection_per_restart_process": true,
+    "restart_owners_stopped": true,
+    "no_claim_text_in_spans": true
+  },
+  "faults": {
+    "test_disconnect_once_reconnects_then_reuses": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "mcp.connect": 2,
+        "mcp.attempt": 3,
+        "mcp.close": 1
+      },
+      "trace_count": 4,
+      "error_spans": 1
+    },
+    "test_contract_faults_not_retried[bad_schema]": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "mcp.connect": 1,
+        "mcp.attempt": 1,
+        "mcp.close": 1
+      },
+      "trace_count": 2,
+      "error_spans": 1
+    },
+    "test_contract_faults_not_retried[remote_error]": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "mcp.connect": 1,
+        "mcp.attempt": 1,
+        "mcp.close": 1
+      },
+      "trace_count": 2,
+      "error_spans": 1
+    },
+    "test_bounded_failure_and_owner_cleanup[timeout]": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "mcp.connect": 2,
+        "mcp.attempt": 2,
+        "mcp.close": 1
+      },
+      "trace_count": 3,
+      "error_spans": 2
+    },
+    "test_bounded_failure_and_owner_cleanup[disconnect]": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "mcp.connect": 2,
+        "mcp.attempt": 2,
+        "mcp.close": 1
+      },
+      "trace_count": 3,
+      "error_spans": 2
+    },
+    "test_idle_disconnect_reconnects_on_next_call": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "mcp.connect": 2,
+        "mcp.attempt": 3,
+        "mcp.close": 1
+      },
+      "trace_count": 4,
+      "error_spans": 1
+    },
+    "test_reuses_one_process_and_cleans_up": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "mcp.connect": 1,
+        "mcp.attempt": 3,
+        "mcp.close": 1,
+        "fixture.task": 1
+      },
+      "trace_count": 1,
+      "error_spans": 0
+    },
+    "test_contract_faults_not_retried[wrong_corpus]": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "mcp.connect": 1,
+        "mcp.attempt": 1,
+        "mcp.close": 1
+      },
+      "trace_count": 2,
+      "error_spans": 1
+    },
+    "test_snapshot_identity_survives_reuse_and_rejects_changed_reconnect": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "mcp.connect": 2,
+        "mcp.attempt": 3,
+        "mcp.close": 2
+      },
+      "trace_count": 5,
+      "error_spans": 1
+    },
+    "test_handshake_timeout_closes_children": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "mcp.connect": 2,
+        "mcp.attempt": 2,
+        "mcp.close": 1
+      },
+      "trace_count": 3,
+      "error_spans": 4
+    },
+    "test_timeout_once_reconnects_and_then_reuses": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "mcp.connect": 2,
+        "mcp.attempt": 3,
+        "mcp.close": 1
+      },
+      "trace_count": 4,
+      "error_spans": 1
+    },
+    "test_concurrent_call_and_close_are_rejected": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "mcp.connect": 2,
+        "mcp.attempt": 3,
+        "mcp.close": 1
+      },
+      "trace_count": 4,
+      "error_spans": 1
+    }
+  },
+  "passed": true
+}

@@ -1,0 +1,140 @@
+FFFFFFF....                                                              [100%]
+=================================== FAILURES ===================================
+_______________ test_real_agent_transport_parity_and_sdk_linkage _______________
+
+setup = (PosixPath('/tmp/pytest-of-agent/pytest-110/test_real_agent_transport_pari0/corpus.jsonl'), <src.evidence_agent.Corpus...n_exporter.InMemorySpanExporter object at 0x7fd125332120>, <src.evidence_telemetry.Telemetry object at 0x7fd124f83950>)
+tmp_path = PosixPath('/tmp/pytest-of-agent/pytest-110/test_real_agent_transport_pari0')
+
+    def test_real_agent_transport_parity_and_sdk_linkage(setup, tmp_path):
+        path, direct, exporter, telemetry = setup
+        mcp = MCPCorpusTools(path, direct.fingerprint, telemetry=telemetry)
+        states = [EvidenceAgent(tmp_path / f'{name}.db', tools, Policy(), telemetry=telemetry)
+                  .run('id', 'PRIVATE SECRET claim') for name, tools in [('direct', direct), ('mcp', mcp)]]
+        assert states[0]['answer'] == states[1]['answer']
+        assert [e['result'] for e in states[0]['trace']] == [e['result'] for e in states[1]['trace']]
+        spans = exporter.get_finished_spans()
+        tasks = [s for s in spans if s.name == 'agent.task']
+>       assert len(tasks) == 2
+E       assert 0 == 2
+E        +  where 0 = len([])
+
+tests/test_integrated_agent.py:58: AssertionError
+_______________ test_contract_faults_do_not_retry[wrong_corpus] ________________
+
+setup = (PosixPath('/tmp/pytest-of-agent/pytest-110/test_contract_faults_do_not_re0/corpus.jsonl'), <src.evidence_agent.Corpus...n_exporter.InMemorySpanExporter object at 0x7fd15cc10770>, <src.evidence_telemetry.Telemetry object at 0x7fd1278d0fe0>)
+tmp_path = PosixPath('/tmp/pytest-of-agent/pytest-110/test_contract_faults_do_not_re0')
+mode = 'wrong_corpus'
+
+    @pytest.mark.parametrize('mode', ['wrong_corpus', 'bad_schema', 'remote_error'])
+    def test_contract_faults_do_not_retry(setup, tmp_path, mode):
+        tools = fault_tools(setup, tmp_path, mode)
+        with pytest.raises(MCPContractError):
+            tools.search('sleep')
+        assert (tmp_path / 'count').read_text() == '1'
+        spans = setup[2].get_finished_spans()
+>       assert spans[-1].status.status_code == StatusCode.ERROR
+               ^^^^^^^^^
+E       IndexError: tuple index out of range
+
+tests/test_integrated_agent.py:75: IndexError
+________________ test_contract_faults_do_not_retry[bad_schema] _________________
+
+setup = (PosixPath('/tmp/pytest-of-agent/pytest-110/test_contract_faults_do_not_re1/corpus.jsonl'), <src.evidence_agent.Corpus...n_exporter.InMemorySpanExporter object at 0x7fd124fa6ea0>, <src.evidence_telemetry.Telemetry object at 0x7fd124fa7f20>)
+tmp_path = PosixPath('/tmp/pytest-of-agent/pytest-110/test_contract_faults_do_not_re1')
+mode = 'bad_schema'
+
+    @pytest.mark.parametrize('mode', ['wrong_corpus', 'bad_schema', 'remote_error'])
+    def test_contract_faults_do_not_retry(setup, tmp_path, mode):
+        tools = fault_tools(setup, tmp_path, mode)
+        with pytest.raises(MCPContractError):
+            tools.search('sleep')
+        assert (tmp_path / 'count').read_text() == '1'
+        spans = setup[2].get_finished_spans()
+>       assert spans[-1].status.status_code == StatusCode.ERROR
+               ^^^^^^^^^
+E       IndexError: tuple index out of range
+
+tests/test_integrated_agent.py:75: IndexError
+_______________ test_contract_faults_do_not_retry[remote_error] ________________
+
+setup = (PosixPath('/tmp/pytest-of-agent/pytest-110/test_contract_faults_do_not_re2/corpus.jsonl'), <src.evidence_agent.Corpus...n_exporter.InMemorySpanExporter object at 0x7fd124fa74d0>, <src.evidence_telemetry.Telemetry object at 0x7fd124fa66f0>)
+tmp_path = PosixPath('/tmp/pytest-of-agent/pytest-110/test_contract_faults_do_not_re2')
+mode = 'remote_error'
+
+    @pytest.mark.parametrize('mode', ['wrong_corpus', 'bad_schema', 'remote_error'])
+    def test_contract_faults_do_not_retry(setup, tmp_path, mode):
+        tools = fault_tools(setup, tmp_path, mode)
+        with pytest.raises(MCPContractError):
+            tools.search('sleep')
+        assert (tmp_path / 'count').read_text() == '1'
+        spans = setup[2].get_finished_spans()
+>       assert spans[-1].status.status_code == StatusCode.ERROR
+               ^^^^^^^^^
+E       IndexError: tuple index out of range
+
+tests/test_integrated_agent.py:75: IndexError
+________________________ test_disconnect_retry_recovers ________________________
+
+setup = (PosixPath('/tmp/pytest-of-agent/pytest-110/test_disconnect_retry_recovers0/corpus.jsonl'), <src.evidence_agent.Corpus...n_exporter.InMemorySpanExporter object at 0x7fd124fb79b0>, <src.evidence_telemetry.Telemetry object at 0x7fd124fb7830>)
+tmp_path = PosixPath('/tmp/pytest-of-agent/pytest-110/test_disconnect_retry_recovers0')
+
+    def test_disconnect_retry_recovers(setup, tmp_path):
+        tools = fault_tools(setup, tmp_path, 'disconnect_once')
+        assert tools.search('sleep')[0]['doc_id'] == 'one'
+        spans = setup[2].get_finished_spans()
+>       assert [s.status.status_code for s in spans] == [StatusCode.ERROR, StatusCode.UNSET]
+E       assert [] == [<StatusCode....ode.UNSET: 0>]
+E         
+E         Right contains 2 more items, first extra item: <StatusCode.ERROR: 2>
+E         Use -v to get more diff
+
+tests/test_integrated_agent.py:82: AssertionError
+_________________ test_transport_fault_is_bounded[disconnect] __________________
+
+setup = (PosixPath('/tmp/pytest-of-agent/pytest-110/test_transport_fault_is_bounde0/corpus.jsonl'), <src.evidence_agent.Corpus...n_exporter.InMemorySpanExporter object at 0x7fd124fb6480>, <src.evidence_telemetry.Telemetry object at 0x7fd124fb6e70>)
+tmp_path = PosixPath('/tmp/pytest-of-agent/pytest-110/test_transport_fault_is_bounde0')
+mode = 'disconnect'
+
+    @pytest.mark.parametrize('mode', ['disconnect', 'timeout'])
+    def test_transport_fault_is_bounded(setup, tmp_path, mode):
+        tools = fault_tools(setup, tmp_path, mode, timeout=2.0)
+        started = time.monotonic()
+        with pytest.raises(OSError):
+            tools.search('sleep')
+        assert time.monotonic() - started < 12  # includes SDK teardown; not realtime guarantee
+>       assert len(setup[2].get_finished_spans()) == 2
+E       assert 0 == 2
+E        +  where 0 = len(())
+E        +    where () = get_finished_spans()
+E        +      where get_finished_spans = <opentelemetry.sdk.trace.export.in_memory_span_exporter.InMemorySpanExporter object at 0x7fd124fb6480>.get_finished_spans
+
+tests/test_integrated_agent.py:92: AssertionError
+___________________ test_transport_fault_is_bounded[timeout] ___________________
+
+setup = (PosixPath('/tmp/pytest-of-agent/pytest-110/test_transport_fault_is_bounde1/corpus.jsonl'), <src.evidence_agent.Corpus...n_exporter.InMemorySpanExporter object at 0x7fd124fb77a0>, <src.evidence_telemetry.Telemetry object at 0x7fd124fb7ad0>)
+tmp_path = PosixPath('/tmp/pytest-of-agent/pytest-110/test_transport_fault_is_bounde1')
+mode = 'timeout'
+
+    @pytest.mark.parametrize('mode', ['disconnect', 'timeout'])
+    def test_transport_fault_is_bounded(setup, tmp_path, mode):
+        tools = fault_tools(setup, tmp_path, mode, timeout=2.0)
+        started = time.monotonic()
+        with pytest.raises(OSError):
+            tools.search('sleep')
+        assert time.monotonic() - started < 12  # includes SDK teardown; not realtime guarantee
+>       assert len(setup[2].get_finished_spans()) == 2
+E       assert 0 == 2
+E        +  where 0 = len(())
+E        +    where () = get_finished_spans()
+E        +      where get_finished_spans = <opentelemetry.sdk.trace.export.in_memory_span_exporter.InMemorySpanExporter object at 0x7fd124fb77a0>.get_finished_spans
+
+tests/test_integrated_agent.py:92: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_integrated_agent.py::test_real_agent_transport_parity_and_sdk_linkage
+FAILED tests/test_integrated_agent.py::test_contract_faults_do_not_retry[wrong_corpus]
+FAILED tests/test_integrated_agent.py::test_contract_faults_do_not_retry[bad_schema]
+FAILED tests/test_integrated_agent.py::test_contract_faults_do_not_retry[remote_error]
+FAILED tests/test_integrated_agent.py::test_disconnect_retry_recovers - asser...
+FAILED tests/test_integrated_agent.py::test_transport_fault_is_bounded[disconnect]
+FAILED tests/test_integrated_agent.py::test_transport_fault_is_bounded[timeout]
+7 failed, 4 passed in 18.38s

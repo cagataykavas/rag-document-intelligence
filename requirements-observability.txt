@@ -1,0 +1,2 @@
+# Opt-in local SDK spans; no collector/network required.
+opentelemetry-sdk==1.39.1

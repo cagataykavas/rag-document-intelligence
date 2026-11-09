@@ -7,3 +7,10 @@ data/
 # Local agent recovery databases; public JSON traces remain versioned.
 evidence/agent*/runs.sqlite*
 evidence/agent*/selection-audit.jsonl
+
+# Integrated experiment checkpoints remain local; JSON evidence is versioned.
+evidence/integrated/**/runs.sqlite*
+evidence/persistent/**/runs.sqlite*
+
+# Losslessly materialized public evidence (see docs/evidence-packaging.md).
+/evidence/persistent/comparison/compare-spans.jsonl

@@ -73,3 +73,11 @@ version, SDK version, and corpus hashes (see `evidence/mcp-integration.json`). I
 no private data, and no model download or hosted model API. The test is skipped
 when the optional MCP dependency is absent, so base-suite success alone does not
 prove this integration passed.
+
+## Integrated agent mode
+
+The original standalone adapter tests above remain historical transport evidence.
+The agent now offers explicit `--transport mcp` with strict client response
+validation, bounded read-only retries and SDK span export. See
+[integrated transport and observability](integrated-mcp-observability.md) for
+architecture, reproduction, measured parity and limitations.

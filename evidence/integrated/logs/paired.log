@@ -1,0 +1,26 @@
+Loading weights:   0%|          | 0/338 [00:00<?, ?it/s]Loading weights: 100%|██████████| 338/338 [00:00<00:00, 5462.74it/s]
+1180 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+343 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+475 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+386 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+1266 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+1062 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+641 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+904 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+1359 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+847 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+532 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+1029 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+1370 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+1110 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+1137 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+1303 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+1213 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+1197 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+560 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+72 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+1395 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+36 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+1179 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+659 {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}
+{"direct": {"label_correct": 11, "evidence_complete_correct": 5, "invalid_or_failed_steps": 0, "model_forward_passes": 48, "wall_seconds": 103.05142992000037}, "mcp": {"label_correct": 11, "evidence_complete_correct": 5, "invalid_or_failed_steps": 0, "model_forward_passes": 48, "wall_seconds": 290.9480284689971}, "n": 24, "all_transport_parity_checks": true}

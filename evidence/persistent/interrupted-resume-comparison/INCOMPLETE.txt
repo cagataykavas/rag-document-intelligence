@@ -1,0 +1,1 @@
+This run was interrupted by environment lifetime after 10 completed cases and a partial 11th. No completed batch summary or clean batch shutdown exists. Retained for transparency only; timings must not be pooled with the clean comparison.

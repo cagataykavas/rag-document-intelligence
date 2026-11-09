@@ -1,0 +1,172 @@
+
+==================================== ERRORS ====================================
+___________ ERROR collecting tests/test_admission_authentication.py ____________
+ImportError while importing test module '/workspace/scratch/a2161bf21835/rag-integrated/tests/test_admission_authentication.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_admission_authentication.py:14: in <module>
+    from src.engine import OpenAICompatibleGenerator, RAGEngine
+src/engine.py:22: in <module>
+    from src.hybrid import HybridSparseRetriever
+src/hybrid.py:6: in <module>
+    from sklearn.feature_extraction.text import TfidfVectorizer
+E   ModuleNotFoundError: No module named 'sklearn'
+______________________ ERROR collecting tests/test_api.py ______________________
+ImportError while importing test module '/workspace/scratch/a2161bf21835/rag-integrated/tests/test_api.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_api.py:8: in <module>
+    from app.api import app, STORE
+app/api.py:14: in <module>
+    from src.engine import RAGEngine
+src/engine.py:22: in <module>
+    from src.hybrid import HybridSparseRetriever
+src/hybrid.py:6: in <module>
+    from sklearn.feature_extraction.text import TfidfVectorizer
+E   ModuleNotFoundError: No module named 'sklearn'
+________________ ERROR collecting tests/test_evidence_agent.py _________________
+ImportError while importing test module '/workspace/scratch/a2161bf21835/rag-integrated/tests/test_evidence_agent.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_evidence_agent.py:5: in <module>
+    from src.evidence_agent import CorpusTools, EvidenceAgent, parse_action
+src/evidence_agent.py:16: in <module>
+    from src.retrieval import Chunk, SparseRetriever
+src/retrieval.py:7: in <module>
+    from sklearn.feature_extraction.text import TfidfVectorizer
+E   ModuleNotFoundError: No module named 'sklearn'
+_______________ ERROR collecting tests/test_evidence_agent_v2.py _______________
+ImportError while importing test module '/workspace/scratch/a2161bf21835/rag-integrated/tests/test_evidence_agent_v2.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_evidence_agent_v2.py:1: in <module>
+    from src.evidence_agent_constrained import candidate_actions
+src/evidence_agent_constrained.py:13: in <module>
+    from src.evidence_agent import LocalQwenPolicy
+src/evidence_agent.py:16: in <module>
+    from src.retrieval import Chunk, SparseRetriever
+src/retrieval.py:7: in <module>
+    from sklearn.feature_extraction.text import TfidfVectorizer
+E   ModuleNotFoundError: No module named 'sklearn'
+________________ ERROR collecting tests/test_evidence_policy.py ________________
+ImportError while importing test module '/workspace/scratch/a2161bf21835/rag-integrated/tests/test_evidence_policy.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_evidence_policy.py:10: in <module>
+    from src.engine import RAGEngine
+src/engine.py:22: in <module>
+    from src.hybrid import HybridSparseRetriever
+src/hybrid.py:6: in <module>
+    from sklearn.feature_extraction.text import TfidfVectorizer
+E   ModuleNotFoundError: No module named 'sklearn'
+_______________ ERROR collecting tests/test_generation_policy.py _______________
+ImportError while importing test module '/workspace/scratch/a2161bf21835/rag-integrated/tests/test_generation_policy.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_generation_policy.py:5: in <module>
+    from src.engine import OpenAICompatibleGenerator, RAGEngine
+src/engine.py:22: in <module>
+    from src.hybrid import HybridSparseRetriever
+src/hybrid.py:6: in <module>
+    from sklearn.feature_extraction.text import TfidfVectorizer
+E   ModuleNotFoundError: No module named 'sklearn'
+_____________ ERROR collecting tests/test_generation_transport.py ______________
+ImportError while importing test module '/workspace/scratch/a2161bf21835/rag-integrated/tests/test_generation_transport.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_generation_transport.py:6: in <module>
+    from src.engine import GeneratorTransportError, OpenAICompatibleGenerator
+src/engine.py:22: in <module>
+    from src.hybrid import HybridSparseRetriever
+src/hybrid.py:6: in <module>
+    from sklearn.feature_extraction.text import TfidfVectorizer
+E   ModuleNotFoundError: No module named 'sklearn'
+________________ ERROR collecting tests/test_pdf_provenance.py _________________
+ImportError while importing test module '/workspace/scratch/a2161bf21835/rag-integrated/tests/test_pdf_provenance.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_pdf_provenance.py:7: in <module>
+    from src.engine import RAGEngine
+src/engine.py:22: in <module>
+    from src.hybrid import HybridSparseRetriever
+src/hybrid.py:6: in <module>
+    from sklearn.feature_extraction.text import TfidfVectorizer
+E   ModuleNotFoundError: No module named 'sklearn'
+_______________ ERROR collecting tests/test_public_benchmark.py ________________
+ImportError while importing test module '/workspace/scratch/a2161bf21835/rag-integrated/tests/test_public_benchmark.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_public_benchmark.py:3: in <module>
+    from src.hybrid import HybridSparseRetriever
+src/hybrid.py:6: in <module>
+    from sklearn.feature_extraction.text import TfidfVectorizer
+E   ModuleNotFoundError: No module named 'sklearn'
+______________________ ERROR collecting tests/test_rag.py ______________________
+ImportError while importing test module '/workspace/scratch/a2161bf21835/rag-integrated/tests/test_rag.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_rag.py:4: in <module>
+    from src.engine import RAGEngine
+src/engine.py:22: in <module>
+    from src.hybrid import HybridSparseRetriever
+src/hybrid.py:6: in <module>
+    from sklearn.feature_extraction.text import TfidfVectorizer
+E   ModuleNotFoundError: No module named 'sklearn'
+_______________ ERROR collecting tests/test_retrieval_quality.py _______________
+ImportError while importing test module '/workspace/scratch/a2161bf21835/rag-integrated/tests/test_retrieval_quality.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_retrieval_quality.py:5: in <module>
+    from src.engine import OpenAICompatibleGenerator, RAGEngine
+src/engine.py:22: in <module>
+    from src.hybrid import HybridSparseRetriever
+src/hybrid.py:6: in <module>
+    from sklearn.feature_extraction.text import TfidfVectorizer
+E   ModuleNotFoundError: No module named 'sklearn'
+=========================== short test summary info ============================
+ERROR tests/test_admission_authentication.py
+ERROR tests/test_api.py
+ERROR tests/test_evidence_agent.py
+ERROR tests/test_evidence_agent_v2.py
+ERROR tests/test_evidence_policy.py
+ERROR tests/test_generation_policy.py
+ERROR tests/test_generation_transport.py
+ERROR tests/test_pdf_provenance.py
+ERROR tests/test_public_benchmark.py
+ERROR tests/test_rag.py
+ERROR tests/test_retrieval_quality.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 11 errors during collection !!!!!!!!!!!!!!!!!!!
+11 errors in 1.02s

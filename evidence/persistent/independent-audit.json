@@ -1,0 +1,16 @@
+{
+  "checks": {
+    "external_frozen_case_order": true,
+    "external_frozen_dataset_hashes": true,
+    "captured_sources_unchanged": true,
+    "gold_source_matches_frozen_hash": true,
+    "exact_fault_export_set_and_span_counts": true,
+    "connect_immediately_parented_to_first_reused_attempt": true,
+    "raw_scoring_matches_case_and_summary_counts": true,
+    "raw_answer_prompt_trajectory_option_audit_parity": true,
+    "attempts_immediately_parented_to_matching_tool_and_task": true,
+    "every_raw_task_has_completed_sdk_span": true
+  },
+  "passed": true,
+  "scope": "Independent post-run audit added after measurement. Original measured source hashes unchanged. Raw parity and immediate parentage recomputed, not trusted from summary booleans."
+}

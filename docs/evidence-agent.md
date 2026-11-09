@@ -46,7 +46,9 @@ unresponsive custom tool can block. Corpus files and the SQLite store are truste
 local inputs, not hostile uploads. Tool output size is finite for the evaluated
 SciFact corpus, but the base runtime is not a general untrusted-corpus ingestion
 service. The [optional MCP adapter](evidence_mcp.md) adds separate transport input
-and response limits; the agent currently calls tools in-process, **not over MCP**.
+and response limits; the original measurements call tools in-process. The new explicit `--transport mcp`
+mode integrates real stdio calls and collected SDK spans; see
+[integrated transport and observability](integrated-mcp-observability.md).
 
 ## Constrained policy details
 
@@ -138,7 +140,8 @@ reasoning, factuality, or clinical validation results**.
 - Add semantic entailment checks and multi-sentence citation candidates.
 - Measure candidate-order sensitivity and abstention calibration.
 - Add explicit process-level deadlines and cancellation before serving users.
-- Integrate the tested MCP transport into the loop only if that boundary is needed.
+- The optional MCP boundary is now integrated and measured separately; see the
+  [transport/observability experiment](integrated-mcp-observability.md).
 
 ## Reproduce the real-model restart smoke
 

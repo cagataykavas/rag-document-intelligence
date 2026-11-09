@@ -1,0 +1,1 @@
+This development run was interrupted after 7 completed cases. It has no complete batch summary. Retained diagnostic evidence only; do not pool its timings with the clean comparison.

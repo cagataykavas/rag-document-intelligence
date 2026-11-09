@@ -1,0 +1,11 @@
+Loading weights:   0%|          | 0/338 [00:00<?, ?it/s]Loading weights: 100%|██████████| 338/338 [00:00<00:00, 6019.06it/s]
+1180 {'fresh': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}, 'reused': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}}
+343 {'fresh': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}, 'reused': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}}
+475 {'fresh': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}, 'reused': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}}
+386 {'fresh': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}, 'reused': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}}
+1266 {'fresh': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}, 'reused': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}}
+1062 {'fresh': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}, 'reused': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}}
+641 {'fresh': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}, 'reused': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}}
+904 {'fresh': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}, 'reused': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}}
+1359 {'fresh': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}, 'reused': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}}
+847 {'fresh': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}, 'reused': {'same_answer': True, 'same_trajectory_prompts_results': True, 'same_policy_audit': True}}

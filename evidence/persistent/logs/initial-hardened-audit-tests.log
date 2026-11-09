@@ -1,0 +1,80 @@
+...F........F                                                            [100%]
+=================================== FAILURES ===================================
+_________ test_raw_changes_cannot_hide_behind_summary_booleans[audit] __________
+
+artifacts = PosixPath('/tmp/pytest-of-agent/pytest-136/test_raw_changes_cannot_hide_b2')
+part = 'audit'
+
+    @pytest.mark.parametrize('part', ['answer', 'trace', 'audit'])
+    def test_raw_changes_cannot_hide_behind_summary_booleans(artifacts, part):
+        path = artifacts / 'comparison/reused-1180.json'
+        state = json.loads(path.read_text())
+        if part == 'answer':
+            state['answer'] = {'verdict': 'tampered'}
+        elif part == 'trace':
+            state['trace'][0]['raw'] = 'tampered'
+        else:
+            (artifacts / 'comparison/reused-1180-policy.jsonl').write_text('{}\n')
+        path.write_text(json.dumps(state))
+>       assert not verify(artifacts)['checks']['raw_answer_prompt_trajectory_option_audit_parity']
+                   ^^^^^^^^^^^^^^^^^
+
+tests/test_persistent_artifact_audit.py:35: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/persistent_artifact_audit.py:71: in verify
+    'model_forward_passes': sum(json.loads(a)['kind'] == 'model_selection' for a in audits[mode])}
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+.0 = <list_iterator object at 0x7f02af7c23b0>
+
+>   'model_forward_passes': sum(json.loads(a)['kind'] == 'model_selection' for a in audits[mode])}
+                                ^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'kind'
+
+src/persistent_artifact_audit.py:71: KeyError
+_______________________ test_gold_source_change_rejected _______________________
+
+artifacts = PosixPath('/tmp/pytest-of-agent/pytest-136/test_gold_source_change_reject0')
+
+    def test_gold_source_change_rejected(artifacts):
+        path = artifacts / 'gold-claims_dev.jsonl'
+        path.write_text(path.read_text() + '\n')
+>       assert not verify(artifacts)['checks']['gold_source_matches_frozen_hash']
+                   ^^^^^^^^^^^^^^^^^
+
+tests/test_persistent_artifact_audit.py:94: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/persistent_artifact_audit.py:41: in verify
+    claims = {c['id']: c for c in map(json.loads, gold_path.read_text().splitlines())}
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/json/__init__.py:346: in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/json/decoder.py:338: in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <json.decoder.JSONDecoder object at 0x7f02b02fd8e0>, s = '', idx = 0
+
+    def raw_decode(self, s, idx=0):
+        """Decode a JSON document from ``s`` (a ``str`` beginning with
+        a JSON document) and return a 2-tuple of the Python
+        representation and the index in ``s`` where the document ended.
+    
+        This can be used to decode a JSON document from a string that may
+        have extraneous data at the end.
+    
+        """
+        try:
+            obj, end = self.scan_once(s, idx)
+        except StopIteration as err:
+>           raise JSONDecodeError("Expecting value", s, err.value) from None
+E           json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/json/decoder.py:356: JSONDecodeError
+=========================== short test summary info ============================
+FAILED tests/test_persistent_artifact_audit.py::test_raw_changes_cannot_hide_behind_summary_booleans[audit]
+FAILED tests/test_persistent_artifact_audit.py::test_gold_source_change_rejected
+2 failed, 11 passed in 0.50s

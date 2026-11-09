@@ -1,0 +1,74 @@
+{
+  "format": 1,
+  "path": "evidence/persistent/comparison/compare-spans.jsonl",
+  "bytes": 596862,
+  "sha256": "de1c1659fc4fef9a0559538dfc4359809e94f88724d7bbde7648e557a6abf35c",
+  "git_blob_sha1": "af990b2601afa7e825f68cf0ea1855a376afef0c",
+  "chunks": [
+    {
+      "path": "evidence/packed/part-0000.txt",
+      "bytes": 48000,
+      "sha256": "a6ea5d1e487268ac713bdb27f067e293910d42b6a704ccf81b5c14c2d188ec57"
+    },
+    {
+      "path": "evidence/packed/part-0001.txt",
+      "bytes": 48000,
+      "sha256": "f4d7a437de0ff1d0a0991bbecea11522313c9eb86a776b14e0b6b2dc46143ccd"
+    },
+    {
+      "path": "evidence/packed/part-0002.txt",
+      "bytes": 48000,
+      "sha256": "f52c6070903bffffe3a97623cbb90e06424e8142a0e4dfe7a4c770c77593dca7"
+    },
+    {
+      "path": "evidence/packed/part-0003.txt",
+      "bytes": 48000,
+      "sha256": "45d37533d91d5d079924e713da6b6bc6c6e03b510ec8a32ab3e1a728d65ccdd3"
+    },
+    {
+      "path": "evidence/packed/part-0004.txt",
+      "bytes": 48000,
+      "sha256": "1ee4cae40009feb3e5c3add727b0c8c26d2d86c3d0fe4f849d937e77f4ec3e96"
+    },
+    {
+      "path": "evidence/packed/part-0005.txt",
+      "bytes": 48000,
+      "sha256": "58e6ae4730b2350b8a8e75e9bb9a0e13765dafc5504110f97149d205409644d0"
+    },
+    {
+      "path": "evidence/packed/part-0006.txt",
+      "bytes": 48000,
+      "sha256": "dbab248d002b8abf671c46c2fd7752b31e0e1fae6de1c7911e39e285ef013f62"
+    },
+    {
+      "path": "evidence/packed/part-0007.txt",
+      "bytes": 48000,
+      "sha256": "c6291a939ef4e1f009e449c91e5869acdbe3f12b3eb47c7f7b49c307a971da69"
+    },
+    {
+      "path": "evidence/packed/part-0008.txt",
+      "bytes": 48000,
+      "sha256": "daa1dc7117afbf7ecf735c7da25faf3886f4b1f8f9f77316199b3713c091344b"
+    },
+    {
+      "path": "evidence/packed/part-0009.txt",
+      "bytes": 48000,
+      "sha256": "1fbdb4e84498784de3c773a602bb6c510faa1da8a5e85fa4c59a93afe1b03f20"
+    },
+    {
+      "path": "evidence/packed/part-0010.txt",
+      "bytes": 48000,
+      "sha256": "3df6e935d0e390ff36e8e8c43b417a012e3fdde24eedd336fda94b70b11c6b02"
+    },
+    {
+      "path": "evidence/packed/part-0011.txt",
+      "bytes": 48000,
+      "sha256": "4a35405d9b9101c2bc0d65cd9f7bb4bc0f305fd8a62714721f0228b7eb8c666f"
+    },
+    {
+      "path": "evidence/packed/part-0012.txt",
+      "bytes": 20862,
+      "sha256": "6b6f3402720a53b598795f1daa89390587f9f58e95c40baa5a3b963def6f5e1a"
+    }
+  ]
+}

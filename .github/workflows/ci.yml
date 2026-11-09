@@ -16,7 +16,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - run: ruff check src app tests
+      - run: ruff check src app tests tools
+      - run: python tools/restore_evidence.py
       - run: pytest -q
       - run: docker compose config
       - run: docker build -t rag-document-intelligence:test .
@@ -28,5 +29,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt -r requirements-mcp.txt
-      - run: pytest -q tests/test_evidence_mcp.py
+      - run: pip install -r requirements.txt -r requirements-mcp.txt -r requirements-observability.txt
+      - run: python tools/restore_evidence.py
+      - run: pytest -q tests/test_evidence_mcp.py tests/test_integrated_agent.py tests/test_persistent_mcp.py

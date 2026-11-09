@@ -1,0 +1,218 @@
+{
+  "paired": {
+    "checks": {
+      "nonempty": true,
+      "unique_span_ids": true,
+      "parents_present_in_same_trace": true,
+      "positive_or_zero_durations": true,
+      "attribute_allowlist": true,
+      "no_exception_events_or_messages": true,
+      "resource_allowlist": true
+    },
+    "passed": true,
+    "span_counts": {
+      "checkpoint.save": 336,
+      "agent.policy": 144,
+      "agent.tool": 144,
+      "model.forward": 96,
+      "agent.task": 48,
+      "mcp.attempt": 48
+    },
+    "trace_count": 48,
+    "error_spans": 0
+  },
+  "restart": {
+    "checks": {
+      "nonempty": true,
+      "unique_span_ids": true,
+      "parents_present_in_same_trace": true,
+      "positive_or_zero_durations": true,
+      "attribute_allowlist": true,
+      "no_exception_events_or_messages": true,
+      "resource_allowlist": true
+    },
+    "passed": true,
+    "span_counts": {
+      "checkpoint.save": 7,
+      "agent.policy": 3,
+      "mcp.attempt": 2,
+      "agent.tool": 3,
+      "model.forward": 2,
+      "agent.task": 2
+    },
+    "trace_count": 1,
+    "error_spans": 1
+  },
+  "checks": {
+    "all_frozen_cases_retained": true,
+    "model_spans_match_actual_forward_audits": true,
+    "all_paired_tasks_exported": true,
+    "restart_task_is_child_of_prior_process_task": true,
+    "interruption_marked_error": true,
+    "resume_completed": true,
+    "no_claim_text_in_spans": true
+  },
+  "faults": {
+    "test_transport_fault_is_bounded[disconnect]": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "mcp.attempt": 2
+      },
+      "trace_count": 2,
+      "error_spans": 2
+    },
+    "test_disconnect_retry_recovers": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "mcp.attempt": 2
+      },
+      "trace_count": 2,
+      "error_spans": 1
+    },
+    "test_transport_fault_is_bounded[timeout]": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "mcp.attempt": 2
+      },
+      "trace_count": 2,
+      "error_spans": 2
+    },
+    "test_checkpoint_error_is_exported_without_exception_text": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "checkpoint.save": 1,
+        "agent.task": 1
+      },
+      "trace_count": 1,
+      "error_spans": 2
+    },
+    "test_model_and_exhaustion_error_spans_are_redacted": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "checkpoint.save": 3,
+        "agent.policy": 1,
+        "agent.task": 1
+      },
+      "trace_count": 1,
+      "error_spans": 2
+    },
+    "test_real_agent_transport_parity_and_sdk_linkage": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "checkpoint.save": 14,
+        "agent.policy": 6,
+        "agent.tool": 6,
+        "agent.task": 2,
+        "mcp.attempt": 2
+      },
+      "trace_count": 2,
+      "error_spans": 0
+    },
+    "test_contract_faults_do_not_retry[remote_error]": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "mcp.attempt": 1
+      },
+      "trace_count": 1,
+      "error_spans": 1
+    },
+    "test_contract_faults_do_not_retry[wrong_corpus]": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "mcp.attempt": 1
+      },
+      "trace_count": 1,
+      "error_spans": 1
+    },
+    "test_contract_faults_do_not_retry[bad_schema]": {
+      "checks": {
+        "nonempty": true,
+        "unique_span_ids": true,
+        "parents_present_in_same_trace": true,
+        "positive_or_zero_durations": true,
+        "attribute_allowlist": true,
+        "no_exception_events_or_messages": true,
+        "resource_allowlist": true
+      },
+      "passed": true,
+      "span_counts": {
+        "mcp.attempt": 1
+      },
+      "trace_count": 1,
+      "error_spans": 1
+    }
+  },
+  "passed": true
+}
