@@ -25,6 +25,11 @@ from src.generation_replay_cli import (
     run,
     seal_private_replay_bundle,
 )
+from src.generation_replay_log import (
+    GENERATION_REPLAY_LOG_GENESIS_SHA256,
+    GenerationReplayLogError,
+    verify_generation_replay_log,
+)
 from src.prompting import EvidenceSnippet
 
 DECRYPT_KEY = b"d" * 32
@@ -287,6 +292,78 @@ def test_keyring_and_private_schema_are_bounded(tmp_path: Path) -> None:
 
     with pytest.raises(ReplayCliError, match="KEY_ID_INVALID"):
         seal_private_replay_bundle(_private_bundle(), key_id="", key=DECRYPT_KEY)
+
+
+def test_cli_appends_to_transactional_ledger_and_deletes_only_after_commit(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bundle = tmp_path / "private.bundle"
+    review = tmp_path / "review"
+    review.mkdir(mode=0o700)
+    review.chmod(0o700)
+    ledger = review / "generation-replay.jsonl"
+    _write_bundle(bundle)
+
+    result = main(
+        [
+            str(bundle),
+            "--ledger",
+            str(ledger),
+            "--expected-ledger-head",
+            GENERATION_REPLAY_LOG_GENESIS_SHA256,
+            "--delete-private-bundle-after-success",
+        ]
+    )
+
+    assert result == 0
+    assert not bundle.exists()
+    snapshot = verify_generation_replay_log(ledger)
+    assert len(snapshot.entries) == 1
+    output = json.loads(capsys.readouterr().out)
+    assert output["sequence"] == 1
+    assert output["ledger_head_sha256"] == snapshot.head_sha256
+
+
+def test_cli_requires_observed_ledger_head_and_preserves_private_bundle(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bundle = tmp_path / "private.bundle"
+    review = tmp_path / "review"
+    review.mkdir(mode=0o700)
+    review.chmod(0o700)
+    ledger = review / "generation-replay.jsonl"
+    _write_bundle(bundle)
+
+    result = main([str(bundle), "--ledger", str(ledger)])
+
+    assert result == 2
+    assert bundle.exists()
+    assert not ledger.exists()
+    assert json.loads(capsys.readouterr().err)["error_code"] == "LEDGER_HEAD_REQUIRED"
+
+
+def test_failed_ledger_commit_never_deletes_private_bundle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle = tmp_path / "private.bundle"
+    review = tmp_path / "review"
+    review.mkdir(mode=0o700)
+    review.chmod(0o700)
+    _write_bundle(bundle)
+
+    def reject_append(*_args, **_kwargs):
+        raise GenerationReplayLogError("STALE_HEAD")
+
+    monkeypatch.setattr(replay_cli, "append_generation_replay_receipt", reject_append)
+    with pytest.raises(GenerationReplayLogError, match="STALE_HEAD"):
+        run(
+            bundle,
+            ledger_path=review / "generation-replay.jsonl",
+            expected_ledger_head_sha256=GENERATION_REPLAY_LOG_GENESIS_SHA256,
+            delete_after_success=True,
+        )
+
+    assert bundle.exists()
 
 
 def stat_mode(path: Path) -> int:

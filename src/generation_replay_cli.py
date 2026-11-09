@@ -17,6 +17,11 @@ from src.generation_evidence_replay import (
     GenerationEvidenceReplayError,
     replay_generation_evidence,
 )
+from src.generation_replay_log import (
+    GenerationReplayLogEntry,
+    GenerationReplayLogError,
+    append_generation_replay_receipt,
+)
 from src.prompting import EvidenceSnippet
 
 ENCRYPTED_BUNDLE_SCHEMA_VERSION = "generation-replay-encrypted-bundle/v1"
@@ -326,10 +331,36 @@ def _delete_exact_bundle(path: Path, descriptor: int, metadata: os.stat_result) 
 
 def run(
     bundle_path: Path,
-    receipt_path: Path,
+    receipt_path: Path | None = None,
     *,
+    ledger_path: Path | None = None,
+    expected_ledger_head_sha256: str | None = None,
     delete_after_success: bool = False,
 ) -> dict[str, object]:
+    receipt, _entry = _execute(
+        bundle_path,
+        receipt_path,
+        ledger_path=ledger_path,
+        expected_ledger_head_sha256=expected_ledger_head_sha256,
+        delete_after_success=delete_after_success,
+    )
+    return receipt
+
+
+def _execute(
+    bundle_path: Path,
+    receipt_path: Path | None,
+    *,
+    ledger_path: Path | None,
+    expected_ledger_head_sha256: str | None,
+    delete_after_success: bool,
+) -> tuple[dict[str, object], GenerationReplayLogEntry | None]:
+    if (receipt_path is None) == (ledger_path is None):
+        raise ReplayCliError("OUTPUT_INVALID")
+    if ledger_path is not None and expected_ledger_head_sha256 is None:
+        raise ReplayCliError("LEDGER_HEAD_REQUIRED")
+    if ledger_path is None and expected_ledger_head_sha256 is not None:
+        raise ReplayCliError("OUTPUT_INVALID")
     decrypt_keyring = load_keyring_from_environment(DECRYPT_KEY_ENV)
     descriptor, metadata, envelope_payload = _open_private_bundle(bundle_path)
     try:
@@ -345,10 +376,18 @@ def run(
             authentication=authentication,
             keyring=auth_keyring,
         )
-        _write_receipt(receipt_path, receipt)
+        entry = None
+        if receipt_path is not None:
+            _write_receipt(receipt_path, receipt)
+        else:
+            entry = append_generation_replay_receipt(
+                ledger_path,
+                receipt,
+                expected_head_sha256=expected_ledger_head_sha256,
+            )
         if delete_after_success:
             _delete_exact_bundle(bundle_path, descriptor, metadata)
-        return receipt
+        return receipt, entry
     finally:
         os.close(descriptor)
 
@@ -358,24 +397,47 @@ def main(argv: Sequence[str] | None = None) -> int:
         description="Verify an encrypted private generation-replay bundle."
     )
     parser.add_argument("bundle", type=Path)
-    parser.add_argument("--receipt", type=Path, required=True)
+    output = parser.add_mutually_exclusive_group(required=True)
+    output.add_argument("--receipt", type=Path)
+    output.add_argument("--ledger", type=Path)
+    parser.add_argument(
+        "--expected-ledger-head",
+        help="lowercase SHA-256 head observed before appending to --ledger",
+    )
     parser.add_argument(
         "--delete-private-bundle-after-success",
         action="store_true",
-        help="delete the exact private bundle only after the receipt is durable",
+        help="delete the exact private bundle only after the selected output is durable",
     )
     args = parser.parse_args(argv)
     try:
-        run(
+        _receipt, entry = _execute(
             args.bundle,
             args.receipt,
+            ledger_path=args.ledger,
+            expected_ledger_head_sha256=args.expected_ledger_head,
             delete_after_success=args.delete_private_bundle_after_success,
         )
-    except (ReplayCliError, GenerationEvidenceReplayError) as exc:
+    except (
+        ReplayCliError,
+        GenerationEvidenceReplayError,
+        GenerationReplayLogError,
+    ) as exc:
         code = exc.code
         print(json.dumps({"verified": False, "error_code": code}), file=sys.stderr)
         return 2
-    print(json.dumps({"verified": True, "receipt": str(args.receipt)}))
+    result = {"verified": True}
+    if entry is None:
+        result["receipt"] = str(args.receipt)
+    else:
+        result.update(
+            {
+                "ledger": str(args.ledger),
+                "sequence": entry.sequence,
+                "ledger_head_sha256": entry.entry_sha256,
+            }
+        )
+    print(json.dumps(result))
     return 0
 
 
