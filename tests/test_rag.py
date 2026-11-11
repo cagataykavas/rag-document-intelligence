@@ -51,6 +51,7 @@ def test_grounded_extractive_query_has_citation(tmp_path: Path) -> None:
     assert answer.insufficient_evidence is False
     assert answer.citations
     assert any("seven years" in item["text"].lower() for item in answer.retrieval)
+    assert answer.corpus_snapshot == store.corpus_snapshot().to_dict()
 
 
 def test_zero_one_few_shot_modes_change_prompt() -> None:

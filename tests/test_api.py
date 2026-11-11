@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 
 os.environ["RAG_DB_PATH"] = "data/test-api-rag.db"
@@ -41,6 +42,14 @@ def test_inline_ingest_and_query() -> None:
         assert payload["claim_support"][0]["best_chunk_id"] in payload["citations"]
         assert "supported_tokens" in payload["claim_support"][0]
         assert payload["evidence_policy"] == []
+        assert payload["corpus_snapshot"]["version"] == 1
+        assert payload["corpus_snapshot"]["documents"] == 1
+        assert payload["corpus_snapshot"]["chunks"] >= 1
+        assert re.fullmatch(r"[0-9a-f]{64}", payload["corpus_snapshot"]["sha256"])
+
+        health = client.get("/health")
+        assert health.status_code == 200
+        assert health.json()["corpus_snapshot"] == payload["corpus_snapshot"]
 
 
 def test_conflict_endpoint() -> None:

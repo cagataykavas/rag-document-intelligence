@@ -114,9 +114,22 @@ The response contains:
 - citation validity and lexical grounding diagnostics;
 - claim-level evidence support rows;
 - evidence-policy findings and quarantined chunk IDs;
-- prompt mode, generator, and retriever identifiers.
+- prompt mode, generator, and retriever identifiers;
+- a privacy-reduced corpus snapshot digest that binds the answer to the exact retrieval material.
 
 A fluent response cannot erase the evidence path that produced it.
+
+## Corpus snapshot lineage
+
+Every answer includes a versioned SHA-256 corpus snapshot with document and chunk counts. The
+engine reads the chunks and builds the digest inside one SQLite read transaction, preventing an
+answer from being labelled with corpus state observed before or after its actual evidence. The
+canonical manifest stream hashes source names, metadata, and chunk text; the public response
+exposes only the aggregate counts and final digest.
+
+This makes a recorded answer comparable to the corpus used at execution time without copying
+document text into telemetry. It detects corpus additions and direct retrieval-material changes,
+but it does not prove that source documents are current, authoritative, or correctly parsed.
 
 ## Citation integrity
 
@@ -285,7 +298,7 @@ The adapter can be replaced with PostgreSQL/pgvector, OpenSearch, Qdrant, or ano
 ```text
 app/api.py             FastAPI ingestion/query/conflict service
 src/parsers.py         document normalization
-src/store.py           persistent document/chunk storage
+src/store.py           persistent storage + transaction-bound corpus snapshot identity
 src/retrieval.py       chunking + original sparse baseline
 src/hybrid.py          word+character hybrid sparse retrieval
 src/evidence_policy.py untrusted-document risk policy
