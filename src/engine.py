@@ -11,7 +11,7 @@ from src.evidence_policy import apply_evidence_policy
 from src.grounding import audit_grounding
 from src.hybrid import HybridSparseRetriever
 from src.prompting import EvidenceSnippet, PromptMode, build_prompt
-from src.store import DocumentStore
+from src.store import CorpusSnapshot, DocumentStore
 
 
 @dataclass(frozen=True)
@@ -29,6 +29,7 @@ class Answer:
     prompt_mode: str
     generator: str
     retriever: str
+    corpus_snapshot: dict
 
 
 class OpenAICompatibleGenerator:
@@ -67,16 +68,22 @@ class RAGEngine:
     def __init__(self, store: DocumentStore) -> None:
         self.store = store
 
+    def _retrieve_snapshot(self, query: str, k: int = 5) -> tuple[list[dict], CorpusSnapshot]:
+        snapshot = self.store.corpus_snapshot()
+        if not snapshot.chunks:
+            return [], snapshot
+        retrieval = HybridSparseRetriever().fit(list(snapshot.chunks)).search(query, k=k)
+        return retrieval, snapshot
+
     def retrieve(self, query: str, k: int = 5) -> list[dict]:
-        chunks = self.store.chunks()
-        if not chunks:
-            return []
-        return HybridSparseRetriever().fit(chunks).search(query, k=k)
+        retrieval, _ = self._retrieve_snapshot(query, k=k)
+        return retrieval
 
     def _insufficient_answer(
         self,
         retrieval: list[dict],
         mode: PromptMode,
+        snapshot: CorpusSnapshot,
         policy_findings: tuple[dict, ...] = (),
         quarantined: tuple[str, ...] = (),
     ) -> Answer:
@@ -102,6 +109,7 @@ class RAGEngine:
             prompt_mode=mode.value,
             generator="extractive",
             retriever="hybrid-word-char-tfidf",
+            corpus_snapshot=snapshot.to_dict(),
         )
 
     def answer(
@@ -112,20 +120,26 @@ class RAGEngine:
         mode: PromptMode = PromptMode.ZERO_SHOT,
         use_llm: bool = False,
     ) -> Answer:
-        retrieval = self.retrieve(question, k=k)
+        retrieval, snapshot = self._retrieve_snapshot(question, k=k)
         evidence = [
             EvidenceSnippet(item["chunk_id"], item["source"], item["text"])
             for item in retrieval
             if item["score"] > 0
         ]
         if not evidence:
-            return self._insufficient_answer(retrieval, mode)
+            return self._insufficient_answer(retrieval, mode, snapshot)
 
         safe_evidence, findings = apply_evidence_policy(evidence)
         finding_rows = tuple(item.to_dict() for item in findings)
         quarantined = tuple(item.chunk_id for item in findings if item.quarantined)
         if not safe_evidence:
-            return self._insufficient_answer(retrieval, mode, finding_rows, quarantined)
+            return self._insufficient_answer(
+                retrieval,
+                mode,
+                snapshot,
+                finding_rows,
+                quarantined,
+            )
 
         prompt = build_prompt(question, safe_evidence, mode)
         if use_llm:
@@ -154,6 +168,7 @@ class RAGEngine:
                 prompt_mode=mode.value,
                 generator="openai-compatible",
                 retriever="hybrid-word-char-tfidf",
+                corpus_snapshot=snapshot.to_dict(),
             )
 
         top = safe_evidence[0]
@@ -181,4 +196,5 @@ class RAGEngine:
             prompt_mode=mode.value,
             generator="extractive",
             retriever="hybrid-word-char-tfidf",
+            corpus_snapshot=snapshot.to_dict(),
         )

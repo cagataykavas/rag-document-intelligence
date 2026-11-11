@@ -52,7 +52,13 @@ class ConflictRequest(BaseModel):
 
 @app.get("/health")
 def health() -> dict[str, object]:
-    return {"status": "ok", "documents": len(STORE.documents()), "chunks": len(STORE.chunks())}
+    snapshot = STORE.corpus_snapshot()
+    return {
+        "status": "ok",
+        "documents": snapshot.document_count,
+        "chunks": snapshot.chunk_count,
+        "corpus_snapshot": snapshot.to_dict(),
+    }
 
 
 @app.get("/documents")

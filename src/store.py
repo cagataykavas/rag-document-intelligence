@@ -38,6 +38,25 @@ class IngestResult:
     content_sha256: str
 
 
+@dataclass(frozen=True)
+class CorpusSnapshot:
+    """Immutable retrieval material plus a privacy-reduced public identity."""
+
+    sha256: str
+    document_count: int
+    chunk_count: int
+    chunks: tuple[Chunk, ...]
+    version: int = 1
+
+    def to_dict(self) -> dict[str, int | str]:
+        return {
+            "version": self.version,
+            "sha256": self.sha256,
+            "documents": self.document_count,
+            "chunks": self.chunk_count,
+        }
+
+
 class DocumentStore:
     def __init__(self, path: str | Path = "data/rag.db") -> None:
         self.path = Path(path)
@@ -82,10 +101,74 @@ class DocumentStore:
             conn.commit()
         return IngestResult(doc_id, True, len(chunks), digest)
 
-    def chunks(self) -> list[Chunk]:
+    def corpus_snapshot(self) -> CorpusSnapshot:
+        """Read retrievable chunks and their digest in one SQLite snapshot.
+
+        The public digest is built from hashes and stable identifiers rather
+        than raw source names, metadata, or chunk text. Internal chunks are
+        returned from the same read transaction so an answer cannot claim a
+        corpus identity assembled before or after the evidence it retrieved.
+        """
+
         with self.connect() as conn:
-            rows = conn.execute("SELECT chunk_id, doc_id, source, text FROM chunks ORDER BY doc_id, ordinal").fetchall()
-        return [Chunk(row["chunk_id"], row["doc_id"], row["source"], row["text"]) for row in rows]
+            conn.execute("BEGIN")
+            document_rows = conn.execute(
+                """
+                SELECT doc_id, source, media_type, content_sha256, metadata_json
+                FROM documents
+                ORDER BY doc_id
+                """
+            ).fetchall()
+            chunk_rows = conn.execute(
+                """
+                SELECT chunk_id, doc_id, source, text, ordinal
+                FROM chunks
+                ORDER BY doc_id, ordinal, chunk_id
+                """
+            ).fetchall()
+
+        snapshot_hash = hashlib.sha256(b"rag-corpus-snapshot-v1\n")
+        for row in document_rows:
+            record = {
+                "doc_id": row["doc_id"],
+                "content_sha256": row["content_sha256"],
+                "media_type": row["media_type"],
+                "source_sha256": hashlib.sha256(row["source"].encode("utf-8")).hexdigest(),
+                "metadata_sha256": hashlib.sha256(
+                    row["metadata_json"].encode("utf-8")
+                ).hexdigest(),
+            }
+            snapshot_hash.update(b"document:")
+            snapshot_hash.update(
+                json.dumps(record, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            )
+            snapshot_hash.update(b"\n")
+        for row in chunk_rows:
+            record = {
+                "chunk_id": row["chunk_id"],
+                "doc_id": row["doc_id"],
+                "ordinal": row["ordinal"],
+                "source_sha256": hashlib.sha256(row["source"].encode("utf-8")).hexdigest(),
+                "text_sha256": hashlib.sha256(row["text"].encode("utf-8")).hexdigest(),
+            }
+            snapshot_hash.update(b"chunk:")
+            snapshot_hash.update(
+                json.dumps(record, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            )
+            snapshot_hash.update(b"\n")
+        chunks = tuple(
+            Chunk(row["chunk_id"], row["doc_id"], row["source"], row["text"])
+            for row in chunk_rows
+        )
+        return CorpusSnapshot(
+            sha256=snapshot_hash.hexdigest(),
+            document_count=len(document_rows),
+            chunk_count=len(chunk_rows),
+            chunks=chunks,
+        )
+
+    def chunks(self) -> list[Chunk]:
+        return list(self.corpus_snapshot().chunks)
 
     def documents(self) -> list[dict]:
         with self.connect() as conn:
