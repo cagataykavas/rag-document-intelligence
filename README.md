@@ -266,6 +266,12 @@ Retrieval evaluation is deliberately independent from LLM fluency. A nice paragr
 
 This keeps the evidence pair attached to every candidate conflict before any optional LLM reasoning is introduced.
 
+Numeric facts are compared after explicit unit canonicalization: time values become seconds,
+percent aliases become percentage points, and KB/MB/GB use documented decimal-byte factors.
+Equivalent forms such as `250 ms` and `0.25 seconds` therefore do not create false conflicts,
+while `250 ms` and `0.5 seconds` do. Bare numbers are ignored so requirement IDs and version
+numbers are not mistaken for comparable measurements.
+
 ## Persistent store
 
 SQLite is used as a transparent local persistence boundary:
