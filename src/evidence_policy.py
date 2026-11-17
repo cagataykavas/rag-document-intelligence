@@ -18,11 +18,31 @@ class EvidenceFinding:
 
 
 SIGNALS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("instruction_override", re.compile(r"\b(ignore|disregard|forget)\b.{0,40}\b(instruction|prompt|rule)s?\b", re.I)),
-    ("system_prompt_request", re.compile(r"\b(system prompt|developer message|hidden instruction)s?\b", re.I)),
-    ("credential_request", re.compile(r"\b(api key|password|secret|access token|credential)s?\b", re.I)),
-    ("tool_execution_request", re.compile(r"\b(run|execute|call|invoke)\b.{0,30}\b(tool|command|shell|terminal|function)\b", re.I)),
-    ("role_reassignment", re.compile(r"\b(you are now|act as|new role|switch role)\b", re.I)),
+    (
+        "instruction_override",
+        re.compile(
+            r"\b(ignore|disregard|forget)\b.{0,40}\b(instruction|prompt|rule)s?\b", re.I
+        ),
+    ),
+    (
+        "system_prompt_request",
+        re.compile(r"\b(system prompt|developer message|hidden instruction)s?\b", re.I),
+    ),
+    (
+        "credential_request",
+        re.compile(r"\b(api key|password|secret|access token|credential)s?\b", re.I),
+    ),
+    (
+        "tool_execution_request",
+        re.compile(
+            r"\b(run|execute|call|invoke)\b.{0,30}\b(tool|command|shell|terminal|function)\b",
+            re.I,
+        ),
+    ),
+    (
+        "role_reassignment",
+        re.compile(r"\b(you are now|act as|new role|switch role)\b", re.I),
+    ),
 )
 
 
@@ -35,10 +55,19 @@ def assess_evidence(snippets: list[EvidenceSnippet]) -> list[EvidenceFinding]:
     """
     findings: list[EvidenceFinding] = []
     for snippet in snippets:
-        matched = tuple(name for name, pattern in SIGNALS if pattern.search(snippet.text))
+        matched = tuple(
+            name
+            for name, pattern in SIGNALS
+            if pattern.search(snippet.text) or pattern.search(snippet.source)
+        )
         if not matched:
             continue
-        severity = "high" if {"instruction_override", "system_prompt_request", "credential_request"} & set(matched) else "medium"
+        severity = (
+            "high"
+            if {"instruction_override", "system_prompt_request", "credential_request"}
+            & set(matched)
+            else "medium"
+        )
         findings.append(
             EvidenceFinding(
                 chunk_id=snippet.chunk_id,

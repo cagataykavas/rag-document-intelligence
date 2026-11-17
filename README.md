@@ -52,6 +52,7 @@ The engineering work is split into boundaries that can be tested independently:
 - **citation integrity:** generated citation IDs are checked against retrieved evidence;
 - **claim support:** answer sentences are mapped back to their strongest cited chunk;
 - **untrusted evidence:** instruction-like document content is scanned and high-risk chunks are quarantined from generation;
+- **prompt structure:** evidence fields use a versioned JSON envelope and source metadata is scanned alongside text;
 - **conflict analysis:** deterministic numeric, negation, and modality contradiction checks;
 - **evaluation:** retrieval, grounding, prompt behavior, and latency are measured separately.
 
@@ -161,7 +162,14 @@ Retrieved documents are treated as **data, not instructions**.
 
 High-risk chunks are quarantined from the generation context but remain visible in the retrieval trace and policy findings. Medium-risk findings are surfaced without automatically deleting the evidence.
 
-The prompt itself also explicitly marks evidence as untrusted and wraps chunks in evidence delimiters. The scanner is presented as a **heuristic defense layer**, not a claim of complete prompt-injection detection.
+The prompt itself also explicitly marks evidence as untrusted. The scanner is presented as a **heuristic defense layer**, not a claim of complete prompt-injection detection.
+
+Prompt construction serializes chunk IDs, source metadata, and text into a versioned JSON envelope.
+Questions are serialized as JSON strings. Newlines, quotes, section markers, tag-like text, and Unicode
+line separators therefore remain inside data values instead of creating new prompt sections. Source
+metadata is evaluated by the same injection policy as document text before it reaches generation.
+This provides structural separation; it does not make prompt-injection detection complete or turn a
+model prompt into a cryptographic security boundary.
 
 If all relevant evidence is quarantined, the engine refuses to fabricate an answer from it.
 
