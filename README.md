@@ -46,6 +46,8 @@ The engineering work is split into boundaries that can be tested independently:
 - **parsing:** PDF, Markdown, text, JSON, and CSV normalization;
 - **persistence:** documents and chunks survive process restarts;
 - **idempotent ingestion:** SHA-256 prevents silent duplicate indexing;
+- **concurrent ingestion:** the digest check and write share one reserved transaction, so
+  duplicate worker retries resolve to one committed document and one chunk set;
 - **retrieval:** transparent word + character sparse fusion with diversity reranking;
 - **prompting:** zero-shot, one-shot, and few-shot are explicit code paths;
 - **generation:** optional OpenAI-compatible adapter rather than provider lock-in;
@@ -278,6 +280,13 @@ chunks
   chunk_id · doc_id · source · text · ordinal
 ```
 
+Ingestion starts with `BEGIN IMMEDIATE`, then checks the unique content digest and writes the
+document plus all chunks inside that same transaction. A bounded SQLite busy timeout lets a
+concurrent worker wait for the winner, re-read the committed digest, and return `inserted=false`
+instead of surfacing a transient lock or uniqueness failure. This is a single-node SQLite
+guarantee; distributed ingestion still needs a shared database with an equivalent unique key and
+transaction boundary.
+
 The adapter can be replaced with PostgreSQL/pgvector, OpenSearch, Qdrant, or another backend without rewriting parsing, prompting, conflict analysis, or evaluation logic.
 
 ## Repository map
@@ -305,6 +314,7 @@ GitHub Actions runs without an external LLM key and checks:
 
 - Ruff over source, API, and tests;
 - persistent ingestion and SHA-256 deduplication;
+- concurrent duplicate-ingestion serialization across independent store connections;
 - hybrid retrieval and ranking metrics;
 - fabricated citation rejection;
 - claim-to-evidence tracing;
