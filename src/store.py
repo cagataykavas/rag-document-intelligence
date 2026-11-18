@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS chunks (
 CREATE INDEX IF NOT EXISTS idx_chunks_doc ON chunks(doc_id, ordinal);
 """
 
+SQLITE_BUSY_TIMEOUT_MS = 10_000
+
 
 @dataclass(frozen=True)
 class IngestResult:
@@ -46,12 +48,19 @@ class DocumentStore:
             conn.executescript(DDL)
 
     def connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path)
+        conn = sqlite3.connect(
+            self.path,
+            timeout=SQLITE_BUSY_TIMEOUT_MS / 1000,
+            isolation_level=None,
+        )
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
         return conn
 
-    def ingest(self, parsed: ParsedDocument, words_per_chunk: int = 110, overlap: int = 25) -> IngestResult:
+    def ingest(
+        self, parsed: ParsedDocument, words_per_chunk: int = 110, overlap: int = 25
+    ) -> IngestResult:
         digest = hashlib.sha256(parsed.text.encode("utf-8")).hexdigest()
         doc_id = f"doc-{digest[:16]}"
         chunks = chunk_documents(
@@ -60,12 +69,20 @@ class DocumentStore:
             overlap=overlap,
         )
         with self.connect() as conn:
+            # Serialize the deduplication check with the write. Without acquiring
+            # the write reservation first, two workers can both observe a miss and
+            # race on the unique content digest instead of returning a safe retry.
+            conn.execute("BEGIN IMMEDIATE")
             existing = conn.execute(
                 "SELECT doc_id FROM documents WHERE content_sha256 = ?",
                 (digest,),
             ).fetchone()
             if existing:
-                count = conn.execute("SELECT COUNT(*) FROM chunks WHERE doc_id = ?", (existing["doc_id"],)).fetchone()[0]
+                count = conn.execute(
+                    "SELECT COUNT(*) FROM chunks WHERE doc_id = ?",
+                    (existing["doc_id"],),
+                ).fetchone()[0]
+                conn.commit()
                 return IngestResult(existing["doc_id"], False, int(count), digest)
 
             conn.execute(
@@ -73,19 +90,33 @@ class DocumentStore:
                 INSERT INTO documents (doc_id, source, media_type, content_sha256, metadata_json)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (doc_id, parsed.source, parsed.media_type, digest, json.dumps(parsed.metadata, ensure_ascii=False)),
+                (
+                    doc_id,
+                    parsed.source,
+                    parsed.media_type,
+                    digest,
+                    json.dumps(parsed.metadata, ensure_ascii=False),
+                ),
             )
             conn.executemany(
                 "INSERT INTO chunks (chunk_id, doc_id, source, text, ordinal) VALUES (?, ?, ?, ?, ?)",
-                [(chunk.chunk_id, chunk.doc_id, chunk.source, chunk.text, index) for index, chunk in enumerate(chunks)],
+                [
+                    (chunk.chunk_id, chunk.doc_id, chunk.source, chunk.text, index)
+                    for index, chunk in enumerate(chunks)
+                ],
             )
             conn.commit()
         return IngestResult(doc_id, True, len(chunks), digest)
 
     def chunks(self) -> list[Chunk]:
         with self.connect() as conn:
-            rows = conn.execute("SELECT chunk_id, doc_id, source, text FROM chunks ORDER BY doc_id, ordinal").fetchall()
-        return [Chunk(row["chunk_id"], row["doc_id"], row["source"], row["text"]) for row in rows]
+            rows = conn.execute(
+                "SELECT chunk_id, doc_id, source, text FROM chunks ORDER BY doc_id, ordinal"
+            ).fetchall()
+        return [
+            Chunk(row["chunk_id"], row["doc_id"], row["source"], row["text"])
+            for row in rows
+        ]
 
     def documents(self) -> list[dict]:
         with self.connect() as conn:
