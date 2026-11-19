@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import html
 import re
 from dataclasses import asdict, dataclass
+from urllib.parse import unquote
 
 from src.prompting import EvidenceSnippet
 
@@ -45,6 +47,33 @@ SIGNALS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 
+MAX_DECODE_SOURCE_CHARACTERS = 100_000
+DECODED_VIEW_SIGNALS = ("html_entity_decoding", "percent_decoding")
+
+
+def _matched_signals(value: str) -> tuple[str, ...]:
+    raw_matches = {name for name, pattern in SIGNALS if pattern.search(value)}
+    decoded_matches: set[str] = set()
+    decoding_signals: list[str] = []
+    if len(value) <= MAX_DECODE_SOURCE_CHARACTERS:
+        decoded_views = (
+            ("html_entity_decoding", html.unescape(value)),
+            ("percent_decoding", unquote(value, errors="replace")),
+        )
+        for decoding_signal, decoded in decoded_views:
+            if decoded == value:
+                continue
+            view_matches = {
+                name for name, pattern in SIGNALS if pattern.search(decoded)
+            }
+            if view_matches - raw_matches:
+                decoding_signals.append(decoding_signal)
+            decoded_matches.update(view_matches)
+
+    matched = raw_matches | decoded_matches
+    ordered_policy_signals = [name for name, _ in SIGNALS if name in matched]
+    return tuple(ordered_policy_signals + decoding_signals)
+
 
 def assess_evidence(snippets: list[EvidenceSnippet]) -> list[EvidenceFinding]:
     """Flag instruction-like content inside untrusted retrieved documents.
@@ -55,10 +84,13 @@ def assess_evidence(snippets: list[EvidenceSnippet]) -> list[EvidenceFinding]:
     """
     findings: list[EvidenceFinding] = []
     for snippet in snippets:
+        text_signals = _matched_signals(snippet.text)
+        source_signals = _matched_signals(snippet.source)
+        matched_set = set(text_signals) | set(source_signals)
         matched = tuple(
             name
-            for name, pattern in SIGNALS
-            if pattern.search(snippet.text) or pattern.search(snippet.source)
+            for name in (*[item[0] for item in SIGNALS], *DECODED_VIEW_SIGNALS)
+            if name in matched_set
         )
         if not matched:
             continue

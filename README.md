@@ -233,7 +233,7 @@ The benchmark exists specifically so “few-shot” is an experimental setting r
 
 An optional configured generator adds the existing structured-schema, citation, and insufficient-evidence metrics as a third result group. Without `--llm`, the report explicitly records `model_output_evaluated: false`; policy and serialization checks are not presented as proof of model behavior.
 
-The report includes a canonical case-set digest and a deterministic boundary-result digest. The latter excludes optional model latency/output metrics so CI can compare the policy and serialization boundary reproducibly across runs.
+The report includes the corpus ID and schema version, a canonical case-set digest, and a deterministic boundary-result digest. The latter excludes optional model latency/output metrics so CI can compare the policy and serialization boundary reproducibly across runs. The corpus is a versioned manifest rather than a bare array, so incompatible fixture changes fail explicitly instead of silently changing benchmark semantics.
 
 ```bash
 python -m src.cli prompt-boundary-benchmark \
@@ -242,7 +242,9 @@ python -m src.cli prompt-boundary-benchmark \
   --fail-under-structure 1.0
 ```
 
-The loader rejects duplicate JSON fields, duplicate case/chunk identities, unknown fields, oversized files, unsafe expected-quarantine references, and unbounded case/snippet counts. The included synthetic corpus covers safe multilingual content, instruction-like evidence and metadata, prompt delimiters, Unicode line separators, and a surfaced-but-not-quarantined operational command reference. It contains no real prompts or customer data.
+The loader rejects unsupported manifest versions, duplicate JSON fields, duplicate case/chunk identities, unknown fields, oversized files, unsafe expected-quarantine references, and unbounded case/snippet counts. The included nine-case synthetic corpus covers safe Turkish and Japanese content, raw and single-layer encoded instruction-like evidence and metadata, benign encoded literals, prompt delimiters, Unicode line separators, and a surfaced-but-not-quarantined operational command reference. It contains no real prompts or customer data.
+
+Before applying the same transparent signal rules, the evidence policy also scans bounded, non-recursive HTML-entity and percent-decoded views of both text and source metadata. Findings retain `html_entity_decoding` or `percent_decoding` provenance so operators can distinguish an encoded match from a raw one. This is deliberately not a general decoder: nested encodings, base64, confusable Unicode, and non-English instruction attacks remain outside the heuristic policy and should be covered by separately versioned cases before support is added.
 
 ## Optional LLM wrapper
 

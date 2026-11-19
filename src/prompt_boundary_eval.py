@@ -20,7 +20,9 @@ MAX_CASE_BYTES = 256_000
 MAX_CASES = 200
 MAX_SNIPPETS_PER_CASE = 100
 MAX_FIELD_CHARACTERS = 100_000
+CORPUS_SCHEMA_VERSION = 1
 CASE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+CORPUS_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 EVIDENCE_MARKER = "Untrusted evidence JSON follows:\n"
 QUESTION_MARKER = "\n\n---\n\nQuestion (JSON string):\n"
 
@@ -35,6 +37,13 @@ class PromptBoundaryCase:
 
 
 @dataclass(frozen=True)
+class PromptBoundaryCorpus:
+    schema_version: int
+    corpus_id: str
+    cases: tuple[PromptBoundaryCase, ...]
+
+
+@dataclass(frozen=True)
 class PromptBoundaryCaseResult:
     case_id: str
     expected_quarantined_chunk_ids: tuple[str, ...]
@@ -46,6 +55,8 @@ class PromptBoundaryCaseResult:
 
 @dataclass(frozen=True)
 class PromptBoundaryReport:
+    corpus_id: str
+    corpus_schema_version: int
     cases: int
     case_set_sha256: str
     boundary_sha256: str
@@ -61,7 +72,7 @@ class PromptBoundaryReport:
         return payload
 
 
-def load_boundary_cases(path: str | Path) -> list[PromptBoundaryCase]:
+def load_boundary_cases(path: str | Path) -> PromptBoundaryCorpus:
     source = Path(path)
     if source.is_symlink() or not source.is_file():
         raise ValueError("boundary benchmark cases must be a regular file")
@@ -70,22 +81,57 @@ def load_boundary_cases(path: str | Path) -> list[PromptBoundaryCase]:
     raw = json.loads(
         source.read_text(encoding="utf-8"), object_pairs_hook=_unique_object
     )
-    if not isinstance(raw, list) or not raw or len(raw) > MAX_CASES:
+    if not isinstance(raw, dict) or set(raw) != {
+        "schema_version",
+        "corpus_id",
+        "cases",
+    }:
+        raise ValueError(
+            "boundary benchmark corpus requires exactly schema_version, corpus_id, and cases"
+        )
+    schema_version = raw["schema_version"]
+    if isinstance(schema_version, bool) or schema_version != CORPUS_SCHEMA_VERSION:
+        raise ValueError(
+            f"unsupported boundary corpus schema_version: {schema_version!r}"
+        )
+    corpus_id = raw["corpus_id"]
+    if not isinstance(corpus_id, str) or not CORPUS_ID_PATTERN.fullmatch(corpus_id):
+        raise ValueError("boundary benchmark corpus_id is invalid")
+    rows = raw["cases"]
+    if not isinstance(rows, list) or not rows or len(rows) > MAX_CASES:
         raise ValueError(f"boundary benchmark requires 1..{MAX_CASES} cases")
 
-    cases = [_parse_case(value) for value in raw]
+    cases = tuple(_parse_case(value) for value in rows)
     case_ids = [case.case_id for case in cases]
     if len(case_ids) != len(set(case_ids)):
         raise ValueError("boundary benchmark case IDs must be unique")
-    return cases
+    return PromptBoundaryCorpus(
+        schema_version=schema_version,
+        corpus_id=corpus_id,
+        cases=cases,
+    )
 
 
 def evaluate_prompt_boundary(
-    cases: list[PromptBoundaryCase],
+    corpus: PromptBoundaryCorpus | list[PromptBoundaryCase],
     *,
     generator: Generator | None = None,
     modes: tuple[PromptMode, ...] = (PromptMode.ZERO_SHOT,),
 ) -> PromptBoundaryReport:
+    if isinstance(corpus, PromptBoundaryCorpus):
+        corpus_id = corpus.corpus_id
+        corpus_schema_version = corpus.schema_version
+        cases = list(corpus.cases)
+    else:
+        corpus_id = "inline"
+        corpus_schema_version = CORPUS_SCHEMA_VERSION
+        cases = corpus
+    if (
+        corpus_schema_version != CORPUS_SCHEMA_VERSION
+        or not isinstance(corpus_id, str)
+        or not CORPUS_ID_PATTERN.fullmatch(corpus_id)
+    ):
+        raise ValueError("boundary benchmark corpus metadata is invalid")
     if not cases or len(cases) > MAX_CASES:
         raise ValueError(f"boundary benchmark requires 1..{MAX_CASES} cases")
     _validate_case_contract(cases)
@@ -133,7 +179,11 @@ def evaluate_prompt_boundary(
         if generator is not None
         else None
     )
-    case_set_sha256 = _case_set_digest(cases)
+    case_set_sha256 = _case_set_digest(
+        cases,
+        corpus_id=corpus_id,
+        corpus_schema_version=corpus_schema_version,
+    )
     boundary_payload = {
         "case_set_sha256": case_set_sha256,
         "policy_accuracy": policy_accuracy,
@@ -143,6 +193,8 @@ def evaluate_prompt_boundary(
         ],
     }
     return PromptBoundaryReport(
+        corpus_id=corpus_id,
+        corpus_schema_version=corpus_schema_version,
         cases=len(case_results),
         case_set_sha256=case_set_sha256,
         boundary_sha256=_digest(boundary_payload),
@@ -263,19 +315,28 @@ def _validate_case_contract(cases: list[PromptBoundaryCase]) -> None:
             raise ValueError("expected_insufficient_evidence must be boolean")
 
 
-def _case_set_digest(cases: list[PromptBoundaryCase]) -> str:
-    payload = [
-        {
-            "case_id": case.case_id,
-            "question": case.question,
-            "evidence": [asdict(item) for item in case.evidence],
-            "expected_quarantined_chunk_ids": sorted(
-                case.expected_quarantined_chunk_ids
-            ),
-            "expected_insufficient_evidence": case.expected_insufficient_evidence,
-        }
-        for case in sorted(cases, key=lambda item: item.case_id)
-    ]
+def _case_set_digest(
+    cases: list[PromptBoundaryCase],
+    *,
+    corpus_id: str,
+    corpus_schema_version: int,
+) -> str:
+    payload = {
+        "schema_version": corpus_schema_version,
+        "corpus_id": corpus_id,
+        "cases": [
+            {
+                "case_id": case.case_id,
+                "question": case.question,
+                "evidence": [asdict(item) for item in case.evidence],
+                "expected_quarantined_chunk_ids": sorted(
+                    case.expected_quarantined_chunk_ids
+                ),
+                "expected_insufficient_evidence": case.expected_insufficient_evidence,
+            }
+            for case in sorted(cases, key=lambda item: item.case_id)
+        ],
+    }
     return _digest(payload)
 
 
