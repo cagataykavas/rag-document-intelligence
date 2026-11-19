@@ -8,6 +8,7 @@ from pathlib import Path
 from src.engine import OpenAICompatibleGenerator, RAGEngine
 from src.evidence_policy import apply_evidence_policy
 from src.parsers import parse
+from src.prompt_boundary_eval import evaluate_prompt_boundary, load_boundary_cases
 from src.prompt_eval import PromptEvalCase, evaluate_prompt_modes
 from src.prompting import EvidenceSnippet, PromptMode
 from src.store import DocumentStore
@@ -84,6 +85,28 @@ def prompt_benchmark_command(args) -> None:
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def prompt_boundary_benchmark_command(args) -> None:
+    if not 0 <= args.fail_under_policy <= 1 or not 0 <= args.fail_under_structure <= 1:
+        raise SystemExit("prompt boundary thresholds must be between 0 and 1")
+    cases = load_boundary_cases(args.cases)
+    generator = OpenAICompatibleGenerator() if args.llm else None
+    report = evaluate_prompt_boundary(
+        cases,
+        generator=generator.generate if generator is not None else None,
+        modes=tuple(
+            PromptMode(item)
+            for item in (args.prompt_mode or [PromptMode.ZERO_SHOT.value])
+        ),
+    )
+    payload = report.to_dict()
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    if (
+        report.policy_accuracy < args.fail_under_policy
+        or report.structural_integrity_rate < args.fail_under_structure
+    ):
+        raise SystemExit(2)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="rag-docs",
@@ -116,6 +139,22 @@ def main() -> None:
     benchmark.add_argument("--cases", type=Path, required=True)
     benchmark.add_argument("--k", type=int, default=5)
     benchmark.set_defaults(func=prompt_benchmark_command)
+
+    boundary = sub.add_parser(
+        "prompt-boundary-benchmark",
+        help="audit evidence policy and prompt-envelope integrity on adversarial cases",
+    )
+    boundary.add_argument("--cases", type=Path, required=True)
+    boundary.add_argument("--llm", action="store_true")
+    boundary.add_argument(
+        "--prompt-mode",
+        action="append",
+        choices=[item.value for item in PromptMode],
+        default=None,
+    )
+    boundary.add_argument("--fail-under-policy", type=float, default=1.0)
+    boundary.add_argument("--fail-under-structure", type=float, default=1.0)
+    boundary.set_defaults(func=prompt_boundary_benchmark_command)
 
     listing = sub.add_parser("list")
     listing.set_defaults(func=list_command)
