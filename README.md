@@ -224,6 +224,26 @@ Example case format:
 
 The benchmark exists specifically so “few-shot” is an experimental setting rather than an interview buzzword.
 
+## Adversarial prompt-boundary benchmark
+
+`src/prompt_boundary_eval.py` evaluates two independent controls over a bounded, reviewed case corpus:
+
+- **policy accuracy:** whether the heuristic evidence policy quarantines exactly the expected chunks;
+- **structural integrity:** whether questions and admitted evidence survive the real JSON prompt envelope without creating sibling prompt sections.
+
+An optional configured generator adds the existing structured-schema, citation, and insufficient-evidence metrics as a third result group. Without `--llm`, the report explicitly records `model_output_evaluated: false`; policy and serialization checks are not presented as proof of model behavior.
+
+The report includes a canonical case-set digest and a deterministic boundary-result digest. The latter excludes optional model latency/output metrics so CI can compare the policy and serialization boundary reproducibly across runs.
+
+```bash
+python -m src.cli prompt-boundary-benchmark \
+  --cases examples/prompt_boundary_cases.json \
+  --fail-under-policy 1.0 \
+  --fail-under-structure 1.0
+```
+
+The loader rejects duplicate JSON fields, duplicate case/chunk identities, unknown fields, oversized files, unsafe expected-quarantine references, and unbounded case/snippet counts. The included synthetic corpus covers safe multilingual content, instruction-like evidence and metadata, prompt delimiters, Unicode line separators, and a surfaced-but-not-quarantined operational command reference. It contains no real prompts or customer data.
+
 ## Optional LLM wrapper
 
 ```bash
@@ -301,6 +321,7 @@ src/grounding.py       citation integrity + answer-level lexical support
 src/claims.py          claim-to-cited-chunk tracing
 src/prompting.py       zero/one/few-shot prompt construction
 src/prompt_eval.py     prompt-mode experiment harness
+src/prompt_boundary_eval.py adversarial policy/envelope benchmark
 src/retrieval_eval.py  Hit/Recall/Precision/MRR/nDCG metrics
 src/evaluate.py        labelled end-to-end evaluation
 src/conflicts.py       deterministic requirement contradictions
@@ -318,6 +339,7 @@ GitHub Actions runs without an external LLM key and checks:
 - claim-to-evidence tracing;
 - prompt-injection quarantine behavior;
 - zero/one/few-shot evaluation harness;
+- adversarial prompt-boundary policy and envelope benchmark;
 - requirement-conflict analysis;
 - REST API behavior;
 - Docker Compose validation;

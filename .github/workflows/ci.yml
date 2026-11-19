@@ -18,5 +18,12 @@ jobs:
       - run: pip install -r requirements.txt
       - run: ruff check src app tests
       - run: pytest -q
+      - name: Run deterministic prompt-boundary benchmark
+        run: |
+          python -m src.cli prompt-boundary-benchmark \
+            --cases examples/prompt_boundary_cases.json \
+            --fail-under-policy 1.0 \
+            --fail-under-structure 1.0 \
+            > /tmp/prompt-boundary-report.json
       - run: docker compose config
       - run: docker build -t rag-document-intelligence:test .
